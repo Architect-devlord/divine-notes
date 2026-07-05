@@ -1,0 +1,68 @@
+filters:
+  and:
+    - file.inFolder("wiki")
+formulas:
+  area: if(file.inFolder("wiki/design"), "design", "codebase")
+  kind_icon: if(type == "hub", "🌍", if(type == "overview", "🧭", if(type == "base", "🏠", if(type == "system", "⚙️", if(type == "reference", "📖", "🤖")))))
+properties:
+  formula.area:
+    displayName: Area
+  type:
+    displayName: Type
+  category:
+    displayName: Category
+  serves:
+    displayName: Serves / Served By
+  status:
+    displayName: Status
+views:
+  - type: table
+    name: Everything
+    groupBy:
+      property: formula.area
+      direction: ASC
+    order:
+      - formula.kind_icon
+      - file.name
+      - formula.area
+      - type
+      - category
+      - status
+    sort: []
+  - type: table
+    name: Design — Robot Bodies
+    filters:
+      and:
+        - file.inFolder("wiki/design")
+        - type == "body"
+    order:
+      - file.name
+      - category
+      - serves
+      - status
+  - type: table
+    name: Design — Bases
+    filters:
+      and:
+        - file.inFolder("wiki/design")
+        - type == "base"
+    order:
+      - file.name
+      - serves
+      - category
+      - status
+  - type: table
+    name: Codebase — Systems
+    filters:
+      and:
+        - file.inFolder("wiki/codebase")
+    order:
+      - file.name
+      - type
+      - status
+  - type: cards
+    name: Everything (cards)
+    order:
+      - file.name
+      - formula.area
+      - type
