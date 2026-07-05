@@ -1,6 +1,6 @@
 # Divine Notes
 
-Comprehensive documentation and obsidian notes for the Divine World project, serving as the central knowledge repository for architecture, design decisions, development timeline, and project features. You can clone this repo and use the knowledge base for development and maintainance using any AI coding agent.
+Comprehensive documentation and obsidian notes for the Divine World project, serving as the central knowledge repository for architecture, design decisions, development timeline, and project features. You can clone this repo and use the knowledge base for development and maintainance of DivineWorld using any AI coding assistant.
 
 ## Contents
 
