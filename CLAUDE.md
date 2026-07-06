@@ -24,7 +24,11 @@ Divine_Notes/
     │   └── Bases/                        ← the 7 base pages
     │       └── *.md
     └── codebase/                      ← implementation pages: what divine-world-core actually does
-        └── *.md
+        ├── *.md                          ← topic-level pages: one system/feature, narrative, may span several files
+        └── files/                          ← per-file pages, added 2026-07-05. One page per source file,
+            └── *.md                          exact filename as the page name (brain_core.md, not brain-core.md).
+                                                Mechanical reference (imports/classes/functions), not narrative —
+                                                see Conventions below for the format and the collision rule.
 ```
 
 Devlord organized `wiki/design/` this way himself (moved the flat files into `Robots/`/`Bases/` after the last delivery) — mirror this layout for any new design page rather than dropping it flat into `wiki/design/`. A new robot body page goes in `Robots/`, a new base page goes in `Bases/`, anything hub-level (like `Robots.md` itself) stays at the `wiki/design/` root.
@@ -55,6 +59,14 @@ Every other page name in this vault (the 7 base pages, all 11 codebase pages) is
 **When code and a design page disagree**: don't silently "fix" either one. Note the discrepancy explicitly (see [[wiki/codebase/known-issues|known-issues]]'s save-cadence example) — sometimes the code is right and the design doc is stale, sometimes the design doc is describing a future target the code hasn't caught up to yet, and either way the discrepancy itself is the useful fact to preserve.
 
 **Never link to `docs/` or `py_backend/oracle_stuff/`** as if current — both confirmed outdated by Devlord. See [[wiki/codebase/known-issues|known-issues]] and [[wiki/codebase/oracle-two-systems|oracle-two-systems]].
+
+**Per-file pages (`wiki/codebase/files/`)**: added 2026-07-05, Python side first. One page per source file, named exactly after it (`brain_core.md` for `brain_core.py` — underscore, not the topic-level pages' hyphen). Format: 💡 role (one paragraph, and a pointer to the matching topic-level page for narrative depth if one exists), Imports, Classes (brief each) with their methods/functions (one line each, async ones called out), module-level functions the same way, **Problems** (general framing — what problem in AI/ML systems generally does this file's approach address, not this codebase's specific history) and **Solutions** (what this file actually does about it) in place of a fix-summary's Root Cause/Solution, and **Files Required**/**Files Used In** in place of Files Modified.
+
+**The collision this format creates, and how it's handled**: a per-file page and its matching topic-level page often have near-identical names (`brain_core.md` vs `brain-core.md`, `world_model.md` vs `world-model.md`) — easy to conflate, and a real mistake made and caught in the first batch of these pages: several early drafts used a topic-level page's name (`[[agent-runtime]]`, `[[language-system]]`, `[[reward-and-learning-stack]]`) inside a **Files Required**/**Files Used In** list as if it were the dependency itself, when the actual file (`agent.py`, `brain_language.py`, `skill_tracker.py`) doesn't even share that name. Rule going forward: **Files Required**/**Files Used In**/**Imports** must name the actual file and link to its per-file page if one exists (`[[cognitive_loop]]`, `[[brain_core]]`); if it doesn't exist yet, use the plain filename (`` `agent.py` ``, not a link to anything) and, separately and explicitly, point to the topic-level page for the narrative version if one exists ("not yet given its own file-level page — see [[agent-runtime]] for the narrative treatment in the meantime"). Never let a topic-page name stand in for a file-dependency claim.
+
+**Don't trust a comment or docstring's claim without checking it against what the surrounding code actually does.** This codebase's own comments are usually accurate but not always current — `ClientMorphSyncPacket`'s header claims "packet ID 1" when the registration code actually assigns 0 (see [[client-sensing-and-control]]), and `log.md`'s own "next session should start with" line has gone stale before (see the 2026-07-05 lint entry). A "FIX:" comment describing history is a claim to verify by reading what the code does now, not a fact to repeat.
+
+**Avoid duplicating the topic-level page**: if one already exists for a file, keep the per-file page's Classes/Functions catalog genuinely terse (true one-liners) and lean on the topic page for anything narrative — rationale, personality-weighted formulas already spelled out there, bug-fix backstory already told there. The per-file page's job is completeness (every method, not just the interesting ones) and the general-AI-problem framing under Problems/Solutions, which the topic pages don't do at all — not re-telling the same story twice.
 
 ## Workflows
 

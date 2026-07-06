@@ -45,7 +45,7 @@ This vault merges what used to be two separate wikis (a design-doc vault and a c
 - [[wiki/codebase/communication-protocol|communication-protocol]] — the wire format, and the "no pretrained labels" philosophy.
 - [[wiki/codebase/hardware-requirements|hardware-requirements]] — real load profile and machine-sizing for the Minecraft-layer server.
 - [[wiki/codebase/known-issues|known-issues]] — synthesis of `Problems.md`/`AUDIT_REPORT.md`/`FIXES_APPLIED.md`, plus two discrepancies this wiki itself surfaced.
-- [[wiki/codebase/electron-frontend|electron-frontend]] — the `dw-chat-ui` React/Vite app: chat, mental workspace, world-model graph, cognitive stream — and the confirmation that its Mental Matrix simulator is *not* wired to the backend system of the same name.
+- [[wiki/codebase/electron-frontend|electron-frontend]] — the `dw-chat-ui` React/Vite app: chat, mental workspace, world-model graph, cognitive stream — and the confirmation that its Mental Matrix simulator is _not_ wired to the backend system of the same name.
 - [[wiki/codebase/human-controller-debug|human-controller-debug]] — the standalone human-piloting pipeline-check tool, easy to confuse with Electron's own "Controller Mode" by name alone; includes Devlord's Mode 1/Mode 2 split for its "overrides an agent's controls" behavior.
 - [[wiki/codebase/blockbench-assets|blockbench-assets]] — the actual 3-D model/animation/texture files for all six gods' humanoid and true forms, plus the Civilian Agent's own body.
 - [[wiki/codebase/commands|commands]] — every server `/command` not already covered on [[breeding-system]]/[[crafting-system]]'s own pages: the admin/genesis surface, `/godtoggle`'s three arities, `/dw npc`, and the Oracle's full Ollama-lifecycle command tree.
@@ -59,7 +59,17 @@ Every item from the previous "not yet ingested" list is now covered: the Electro
 
 **Deliberately left at survey depth, not deep-read**: `DWMod.java`/`DWClientMod.java` (mod entry points), `ClientSetup.java`/`DivineClientSetup.java`, and both `ModEntities.java`/`EntityAttributeRegistrar(ation).java` pairs — pure Forge registration boilerplate (entity types, attributes, bus registration) rather than behavior. Flagging their existence here rather than silently treating the sweep as exhaustive, per this vault's accuracy-over-completeness rule — worth a pass if a future question actually hinges on mod-loading order or registration timing specifically.
 
-**New since the sweep above was compiled** (commit `8839776`, one ahead of the `68cd2a7` this sweep was run against — see `log.md`'s [2026-07-05] entry for full detail): a brand-new file `emergent_templates.py`, plus real changes to `brain_core.py`, `cognitive_loop.py`, `planner.py`, and `continual_learner.py` (the template-ceiling/`EmergentSkillPool` fix). These are slated to become the first pages under a new `wiki/codebase/files/` per-file layer — format specified in `demo-features-explaination.md`, not yet folded into the topic-level pages above or into `CLAUDE.md`. Per Devlord, this stays parked until the sweep above was complete — it now is.
+## Codebase — files/ (per-file reference pages, Python side, 5 pages so far)
+
+New layer, format specified by Devlord in `demo-features-explaination.md`, formalized in `CLAUDE.md`'s Conventions. One page per source file, exact filename as the page name, living at `wiki/codebase/files/` — a mechanical reference (imports, every class/function, one line each) rather than the topic-level pages' narrative. Covers the five files touched by commit `8839776`:
+
+- [[wiki/codebase/files/emergent_templates|emergent_templates.py]] — `EmergentSkillPool`; no internal dependencies at all.
+- [[wiki/codebase/files/continual_learner|continual_learner.py]] — `PolicyNetwork`/`ValueNetwork`/`ContinualLearner`; owns the skill pool above, plus a live-policy distillation mechanism not covered on the topic-level page.
+- [[wiki/codebase/files/planner|planner.py]] — `ImagineResult`/`CognitivePlanner`; kept terse where [[imagination-and-planning]] already covers the narrative in depth.
+- [[wiki/codebase/files/brain_core|brain_core.py]] — `PatternRecognizer`/`DeliberationResult`/`BrainCore`, plus the ~15 methods [[brain-core]] doesn't mention and the new `_action_to_vector()` helper.
+- [[wiki/codebase/files/cognitive_loop|cognitive_loop.py]] — the largest of the five; `CognitiveState` (not on the topic page at all) and `PLAN_BLEND` (new this commit, not yet on [[cognitive-loop]]) are this page's main additions.
+
+**A real mistake made and caught in this first batch**: several early drafts linked a topic-level page's name (`agent-runtime`, `language-system`, `reward-and-learning-stack`) inside a Files Required/Used In list as if it were the actual dependency, when the real files (`agent.py`, `brain_language.py`, `skill_tracker.py`) don't share that name at all. All five pages have been corrected — see `CLAUDE.md`'s Conventions for the rule going forward, and `log.md`'s [2026-07-05] entry for the full account.
 
 ## Deprecated — do not re-ingest as current
 
