@@ -39,6 +39,12 @@ Also flagged: 3 duplicate `requirements.txt` entries (websockets was one), 2 Gra
 
 Not from any of the three source docs, but worth recording here since it c "roughly one-minute" BrainCapsule save cadence as a build target; the actual current code (`run_standalone_agent`'s main loop) saves every 300 seconds. See [[agent-runtime]] for the detail. Not a bug in either doc individually — the design wiki is describing a target for hardware that doesn't exist yet — but the numbers don't match today, and it's the kind of thing a lint pass across both wikis should keep catching.
 
+## Electron frontend — small findings from its first ingest pass (2026-07-05)
+
+Two unused callback props, same pattern in both files: `MentalMatrixSimulator.jsx` accepts `onSimulationEvent` and `WorldModelVisualizer.jsx` accepts `onPredictionRequest`, and neither ever actually calls the prop it's given, despite both parent components passing in a real callback expecting it to fire. Practical effect: `MentalMatrixModal`'s "Dump Buffer" export will always be empty, and nothing ever requests a prediction. See [[electron-frontend]].
+
+`ControllerSafety.jsx` hardcodes `BACKEND_URL = "http://127.0.0.1:11400"` and `agent_id: "demo"` in three separate places, instead of using the dynamic values `App.jsx` derives from the page's own URL and `/status` — Controller Mode will silently talk to the wrong backend for any agent not running on port 11400.
+
 ## Deprecated, not a "problem" — just don't re-document as current
 
 `py_backend/oracle_stuff/` (`create_oracle.py`, `teach_oracle.py`, `create_custom_texts.py`) — confirmed by Devlord as old and unused. See [[oracle-two-systems]] for the full context. Recorded here too since "old scripts still sitting in the repo" is exactly the kind of thing a future ingest pass might otherwise stumble on and assume is live.

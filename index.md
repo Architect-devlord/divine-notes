@@ -21,7 +21,7 @@ This vault merges what used to be two separate wikis (a design-doc vault and a c
 
 [[wiki/design/Bases/Common_Agent_Base|Common_Agent_Base]] (reference implementation) · [[wiki/design/Bases/Creaking_Observatory|Creaking_Observatory]] · [[wiki/design/Bases/Elder_Guardian_Temple|Elder_Guardian_Temple]] · [[wiki/design/Bases/Warden_Fortress|Warden_Fortress]] · [[wiki/design/Bases/Ender_Dragon_Sanctuary|Ender_Dragon_Sanctuary]] · [[wiki/design/Bases/Wither_Citadel|Wither_Citadel]] · [[wiki/design/Bases/Oracle_Archive|Oracle_Archive]].
 
-## Codebase — Ingested (23 pages, full depth)
+## Codebase — Ingested (29 pages, full depth)
 
 - [[wiki/codebase/architecture-overview|architecture-overview]] — the four pieces and how they connect.
 - [[wiki/codebase/agent-runtime|agent-runtime]] — `NPCAgent`, the class every agent actually is.
@@ -44,13 +44,22 @@ This vault merges what used to be two separate wikis (a design-doc vault and a c
 - [[wiki/codebase/oracle-two-systems|oracle-two-systems]] — **read before touching anything Oracle-related.**
 - [[wiki/codebase/communication-protocol|communication-protocol]] — the wire format, and the "no pretrained labels" philosophy.
 - [[wiki/codebase/hardware-requirements|hardware-requirements]] — real load profile and machine-sizing for the Minecraft-layer server.
-- [[wiki/codebase/known-issues|known-issues]] — synthesis of `Problems.md`/`AUDIT_REPORT.md`/`FIXES_APPLIED.md`, plus a design-vs-code discrepancy this wiki surfaced.
+- [[wiki/codebase/known-issues|known-issues]] — synthesis of `Problems.md`/`AUDIT_REPORT.md`/`FIXES_APPLIED.md`, plus two discrepancies this wiki itself surfaced.
+- [[wiki/codebase/electron-frontend|electron-frontend]] — the `dw-chat-ui` React/Vite app: chat, mental workspace, world-model graph, cognitive stream — and the confirmation that its Mental Matrix simulator is *not* wired to the backend system of the same name.
+- [[wiki/codebase/human-controller-debug|human-controller-debug]] — the standalone human-piloting pipeline-check tool, easy to confuse with Electron's own "Controller Mode" by name alone; includes Devlord's Mode 1/Mode 2 split for its "overrides an agent's controls" behavior.
+- [[wiki/codebase/blockbench-assets|blockbench-assets]] — the actual 3-D model/animation/texture files for all six gods' humanoid and true forms, plus the Civilian Agent's own body.
+- [[wiki/codebase/commands|commands]] — every server `/command` not already covered on [[breeding-system]]/[[crafting-system]]'s own pages: the admin/genesis surface, `/godtoggle`'s three arities, `/dw npc`, and the Oracle's full Ollama-lifecycle command tree.
+- [[wiki/codebase/events|events]] — the three Forge event listeners not already covered elsewhere: server join/leave/tick, client world-join/respawn/logout, and chat forwarding into the agent's perception.
+- [[wiki/codebase/utils-and-infrastructure|utils-and-infrastructure]] — agent tagging/detection (the actual source of truth `DWNPCManager`/`DWEventHandler` both defer to), the genesis/divine-reset ritual and the crash it used to cause, in-world documentation books, and the shared particle-circle renderer.
+- [[wiki/codebase/client-sensing-and-control|client-sensing-and-control]] — the Minecraft-client half of perception/actuation: vision/audio capture (three old-hardware fixes worth knowing about) and the bit-packed action-execution protocol shared with [[human-controller-debug]].
 
-## Codebase — Identified, not yet ingested
+## Codebase — fully swept
 
-The RL harness and Isaac Sim bridge are now covered above; `los_filter.py` is folded into [[wiki/codebase/observation-space|observation-space]].
+Every item from the previous "not yet ingested" list is now covered: the Electron frontend and the human-controller debug tool (with the Mental Matrix frontend/backend disconnection confirmed and cross-linked both ways), the Mental Matrix classes themselves in `world_model.py` (confirmed hardcoded/deterministic, not actually "powered by world model predictions" despite the class's own docstring), the Blockbench asset files, `CraftingWalkManager`/`BreedingWalkManager`'s tick-by-tick internals, the `GodDisguiseHandler`↔`TransformationHandler` wiring (turned out to be the wrong method in the original guess — `applyGodForm()`, not `applyTransform()`), the Isaac Sim `brain.pcap` round-trip (fully automatic both ways, confirmed), and the rest of the Minecraft mod layer's commands/events/utils.
 
-Still open: the Blockbench asset files themselves (the `.bbmodel`/`.geo.json`/`.animation.json` content — [[wiki/codebase/forms-and-disguise|forms-and-disguise]] covers the _code_ that consumes them, not the assets); the Mental Matrix simulation classes inside `world_model.py` (lines ~99–810 — now at least located, not yet read); `CraftingWalkManager`/`BreedingWalkManager`'s tick-by-tick internals (structure is documented, the actual waypoint-following loop isn't); the exact wiring between `GodDisguiseHandler.applyTransform()` and `TransformationHandler`'s `form:disguise` broadcast (assumed connected, not directly confirmed); whether Isaac Sim training writes an updated `brain.pcap` back out automatically or only the import direction is automated; the rest of the Minecraft mod layer (remaining commands/events/utils not already covered); and the Electron frontend (`dw_agent/`) — the last major untouched area.
+**Deliberately left at survey depth, not deep-read**: `DWMod.java`/`DWClientMod.java` (mod entry points), `ClientSetup.java`/`DivineClientSetup.java`, and both `ModEntities.java`/`EntityAttributeRegistrar(ation).java` pairs — pure Forge registration boilerplate (entity types, attributes, bus registration) rather than behavior. Flagging their existence here rather than silently treating the sweep as exhaustive, per this vault's accuracy-over-completeness rule — worth a pass if a future question actually hinges on mod-loading order or registration timing specifically.
+
+**New since the sweep above was compiled** (commit `8839776`, one ahead of the `68cd2a7` this sweep was run against — see `log.md`'s [2026-07-05] entry for full detail): a brand-new file `emergent_templates.py`, plus real changes to `brain_core.py`, `cognitive_loop.py`, `planner.py`, and `continual_learner.py` (the template-ceiling/`EmergentSkillPool` fix). These are slated to become the first pages under a new `wiki/codebase/files/` per-file layer — format specified in `demo-features-explaination.md`, not yet folded into the topic-level pages above or into `CLAUDE.md`. Per Devlord, this stays parked until the sweep above was complete — it now is.
 
 ## Deprecated — do not re-ingest as current
 
@@ -70,5 +79,6 @@ Earlier drafts leaned on a fuller Minecraft-society framing — tribes, families
 ## Next Steps
 
 - Real build logs once hardware is sourced (weight/thrust numbers vs. the estimates in [[wiki/design/Robots/Ender_Dragon|Ender_Dragon]] / [[wiki/design/Robots/Wither|Wither]]).
-- The Electron frontend (`dw_agent/`) — the last major untouched area of the codebase.
-- A lint pass across both halves once a few more real ingests have landed on each side.
+- Confirm the `wiki/codebase/files/` per-file format with Devlord, then ingest the five files from commit `8839776` — `emergent_templates.py` first (see the note above).
+- Mode 1/Mode 2 split for the human-controller tool (see [[wiki/codebase/human-controller-debug|human-controller-debug]]) — design direction only, not yet implemented.
+- A lint pass across both halves — this is now a good point for one, with the codebase side freshly swept end to end.
