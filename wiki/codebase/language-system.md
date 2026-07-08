@@ -2,10 +2,9 @@
 type: system
 status: ingested
 ---
-
 # Language System
 
-💡 **What this is**: `ai_core/brain_language.py`'s `LanguageIntelligence` — how an agent actually learns to talk. Header states the philosophy directly: *"Learns through experience, not pre-training."* Same commitment [[observation-space]] makes for perception, applied to language.
+💡 **What this is**: `ai_core/brain_language.py`'s `LanguageIntelligence` — how an agent actually learns to talk. Header states the philosophy directly: _"Learns through experience, not pre-training."_ Same commitment [[observation-space]] makes for perception, applied to language.
 
 ## No pretrained tokenizer, no pretrained vocabulary
 
@@ -21,7 +20,9 @@ status: ingested
 names = ['pre-linguistic', 'proto-language', 'linguistic', 'advanced']
 ```
 
-`language_stage` starts at 0 (`pre-linguistic`) and progresses based on accumulated experience (exact promotion thresholds weren't traced in this pass). Stage gates real behavior, not just cosmetic labeling:
+`language_stage` starts at 0 (`pre-linguistic`) and progresses based on accumulated experience — **thresholds now traced** (both conditions required at each step, stages only ever advance): stage 1 (`proto-language`) at ≥5 experiences and ≥15 vocabulary tokens; stage 2 (`linguistic`) at ≥50/≥50; stage 3 (`advanced`) at ≥200/≥200. Stage gates real behavior, not just cosmetic labeling:
+
+**Major correction, 2026-07-05**: `process_input()` — the method underneath conversation buffering, familiarity tracking, epistemic scoring, and background GRPO — had two independent bugs meaning it had never actually run against real chat traffic before this pass's fix. First, a `time` (module, not function) vs `time.time()` typo crashed it on every call. Second and separately, `agent.py`'s real `/chat` route never called this method at all — it called `generate_speech()` directly, bypassing the whole pipeline. Both are fixed now, but everything downstream (familiarity tracking, epistemic-scored background GRPO, grounding-via-conversation) should be understood as newly-live behavior, not a long-running mechanism — see [[wiki/codebase/files/brain_language|brain_language.py]] for the full account.
 
 - `should_speak()` returns `False` outright below stage 1.
 - `generate_speech()` returns `None` at stage 0.

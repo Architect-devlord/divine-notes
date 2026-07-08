@@ -192,4 +192,20 @@ Linking convention re-verified across all four before finishing.
 
 ---
 
-**Next session should start with**: `brain_language.py` (1648 lines) is the last big unclaimed file in `ai_core/`. Beyond that: `config_loader.py`, `god_controls.py`, `communication_protocol.py`, `packager.py`, `breeding_system.py`, `web_browser.py`, `chat_system.py`, `mental_matrix_api.py` (the re-export shim), and `main.py` all remain untouched at the file level, as does the entire Java mod layer and the Electron frontend. No fixed order specified.
+## [2026-07-05] ingest | brain_language.py — the last big file in ai_core/, and a major dormant-pipeline finding
+
+Read in full: `MultimodalGroundingTransformer`, `OnlineBPETokenizer`, `Vocabulary`, `ContextSchema`, `ConversationBuffer`, `LanguageIntelligence`, plus the module-level epistemic-scoring functions. [[language-system]] already covered the staged-progression concept and multimodal grounding narratively; this pass filled in two things that page explicitly or implicitly left open, and surfaced one significant new finding.
+
+**Filled in, now on [[language-system]]**: the exact stage-promotion thresholds, previously flagged there as untraced — stage 1 at ≥5 experiences/≥15 vocab, stage 2 at ≥50/≥50, stage 3 at ≥200/≥200, both conditions required each time.
+
+**The major finding, on both [[language-system]] and [[wiki/codebase/files/brain_language|the file-level page]]**: `process_input()` — the method underneath conversation buffering, familiarity tracking, epistemic scoring, and background chat-GRPO — had two independent bugs meaning it had never actually executed against real chat traffic before this fix. A `'timestamp': time` line (the module, not `time.time()`, the function) crashed the method on every single call. Separately, `agent.py`'s real `/chat` HTTP route never called `process_input()` at all — it called `generate_speech()` directly, so even without the crash, the pipeline's real entry point from user-facing chat didn't exist. Both are fixed now, but it's worth being precise going forward that familiarity tracking, epistemic-scored background GRPO, and grounding-via-conversation are all newly-live behavior as of this fix, not long-running mechanisms — several earlier ingest passes (including some of this vault's own pages) describe them as already-working systems without knowing this.
+
+**Second finding**: `_store_exchange_in_memory()` is where `vision.py`'s `ground_token()` — complete, working infrastructure with nothing calling it, per [[wiki/codebase/files/vision|vision.py]]'s own earlier ingest — actually gets its one caller. A topic word from the current exchange plus the agent's current visual token, correlated noisily and accumulatively, gated to stage ≥1.
+
+**Also closed**: [[reward-and-learning-stack]]'s `familiarity_r` term relied on `_partner_visit_counts`/`_partner_last_seen`, which had no save path at all before this file's own fix — every agent restart reset every returning visitor to "first visit." Now persisted via `state_dict()`.
+
+Linking convention re-verified.
+
+---
+
+**Next session should start with**: `ai_core/` is now fully covered at the file level (18 files). Remaining in `py_backend/` outside `ai_core/`: `config_loader.py`, `god_controls.py`, `communication_protocol.py`, `packager.py`, `breeding_system.py`, `web_browser.py`, `chat_system.py`, `mental_matrix_api.py` (the re-export shim — quick, already described on [[world-model]]), `human_controller_server.py` (already covered narratively on [[human-controller-debug]], not yet at file level), and `main.py`. `communication_protocol.py` is probably highest-value next: referenced from nearly every file this pass as "not yet given its own file-level page," and it's where the possible duplicate GRPO implementation flagged in `self_supervised_trainer.py`'s ingest would actually be confirmed or ruled out. Beyond `py_backend/`: the entire Java mod layer and the Electron frontend remain topic-level only. No fixed order specified.
