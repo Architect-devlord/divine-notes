@@ -28,7 +28,9 @@ views:
       - type
       - category
       - status
-    sort: []
+    sort:
+      - property: formula.kind_icon
+        direction: DESC
   - type: table
     name: Design — Robot Bodies
     filters:

@@ -17,11 +17,11 @@ status: ingested
 **Neural world model classes:**
 
 - `WorldModelConfig` (dataclass) — every architecture/training constant in one place; `action_dim: int = 13` carries the fix comment directly (`# FIX INT-05: was 11, must match TransformerPolicy.BASE_DIM=13`) — see "Not yet reconciled" below for two places that don't actually follow it.
-- `VisionEncoder`, `AudioEncoder`, `ProprioceptionEncoder`, `ActionEncoder` (all `nn.Module`) — one CNN or MLP each, all with a single `forward()`; `VisionEncoder`/`AudioEncoder` both handle an optional leading time dimension by flattening batch×time before their conv stack and unflattening after.
+- `VisionEncoder`, `AudioEncoder`, `ProprioceptionEncoder`, `ActionEncoder` (all `nn.Module`) — one CNN or Multi-Layer Perceptron (MLP) each, all with a single `forward()`; `VisionEncoder`/`AudioEncoder` both handle an optional leading time dimension by flattening batch×time before their conv stack and unflattening after.
 - `TransformerBlock` (`nn.Module`) — one `forward()`: pre-norm multi-head attention + FFN, standard.
 - `WorldModelTransformer` (`nn.Module`) — owns the four encoders above plus a learned positional embedding and the stack of `TransformerBlock`s; `forward()` sums all present-modality encodings into one representation before the transformer stack, rather than concatenating — worth knowing since it means every modality must already share `d_model` width going in.
 - `VariationalEncoder` (`nn.Module`) — one `forward()`: the reparameterization trick, mean/logvar/sample.
-- `RewardPredictor`, `TerminationPredictor`, `NextStatePredictor` (all `nn.Module`) — one `forward()` each, plain MLPs.
+- `RewardPredictor`, `TerminationPredictor`, `NextStatePredictor` (all `nn.Module`) — one `forward()` each, plain Multi-Layer Perceptrons (MLPs).
 - `WorldModel` (`nn.Module`) — the assembled whole. `encode_observation()`, `forward()`, `imagine()`, `compute_loss()`, `train_step()`, `save()`/`load()`, `get_stats()` — see [[world-model]] for `imagine()`'s rollout logic and the ensemble's uncertainty mechanism; not repeated here. Two details not on that page: `compute_loss()` deliberately keeps `next_state_loss`/`kl_loss` as zero-valued tensors (not Python floats) when their inputs aren't present, specifically so the loss sum stays inside the autograd graph with a consistent dtype rather than breaking gradient flow; `forward()`'s next-state head is fed the _raw_, un-re-encoded action tensor concatenated onto the latent, deliberately, since the action was already folded into the latent once via `encode_observation()` and re-encoding it a second time would double-count it.
 - `EnsembleWorldModel` — see [[world-model]]; not repeated here.
 

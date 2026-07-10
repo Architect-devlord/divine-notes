@@ -2,7 +2,6 @@
 type: system
 status: ingested
 ---
-
 # Agent Runtime (`NPCAgent`)
 
 💡 **What this is**: `ai_core/agent.py`'s `NPCAgent` class — the object every Civilian Agent and God Agent actually is, at the code level. One instance per agent, one FastAPI process per instance (see [[architecture-overview]]).

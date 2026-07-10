@@ -139,7 +139,7 @@ object (`agent.py:857`), and `decide()`'s normal path calls `self.policy._predic
 object (`agent.py`, `decide()`) — so on the default path, GRPO's gradient and the executed action
 provably share one set of weights, not a synced copy. The exception: `decide()` has a second path,
 active whenever `policy_bridge.is_in_learning_mode()` is true, that instead calls `cl_head` — a
-small, separate MLP (`policy_bridge.py`) that only receives a slow, partial soft-sync of the
+small, separate Multi-Layer Perceptron (MLP) (`policy_bridge.py`) that only receives a slow, partial soft-sync of the
 *encoder* from the main policy (`_soft_sync_cl_head`, `tau=0.05`, every `SYNC_EVERY=200` calls) and
 never receives the GRPO-updated action head directly. So: fully direct on the default path;
 partial and delayed, representation-only, while a curiosity streak has learning mode active. Worth

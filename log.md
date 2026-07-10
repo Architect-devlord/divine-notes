@@ -208,4 +208,64 @@ Linking convention re-verified.
 
 ---
 
-**Next session should start with**: `ai_core/` is now fully covered at the file level (18 files). Remaining in `py_backend/` outside `ai_core/`: `config_loader.py`, `god_controls.py`, `communication_protocol.py`, `packager.py`, `breeding_system.py`, `web_browser.py`, `chat_system.py`, `mental_matrix_api.py` (the re-export shim — quick, already described on [[world-model]]), `human_controller_server.py` (already covered narratively on [[human-controller-debug]], not yet at file level), and `main.py`. `communication_protocol.py` is probably highest-value next: referenced from nearly every file this pass as "not yet given its own file-level page," and it's where the possible duplicate GRPO implementation flagged in `self_supervised_trainer.py`'s ingest would actually be confirmed or ruled out. Beyond `py_backend/`: the entire Java mod layer and the Electron frontend remain topic-level only. No fixed order specified.
+## [2026-07-05] ingest | communication_protocol.py + config_loader.py — the highest-value remaining file, plus a quick pairing
+
+Started with `communication_protocol.py` on Devlord's own priority call from the previous session — referenced as "not yet given its own page" from nearly every file in the last several ingests, and the one place that could actually confirm or rule out a possible duplicate GRPO implementation. Turned out much richer than [[communication-protocol]]'s existing thin coverage suggested; that page has been substantially expanded alongside the new file-level page.
+
+**The duplicate-GRPO question is resolved, not just checked**: `_grpo_policy_update()` here is a thin, guarded call into `agent.policy.grpo_update()` — itself [[self_supervised_trainer]]'s `grpo_update()` monkeypatched onto the live policy. One verified implementation, two trigger sites (here, and [[cognitive_loop]]'s continual-learning worker), with an explicit guard so only one fires per signal. [[self_supervised_trainer]]'s file-level page corrected from "worth checking" to confirmed.
+
+**A serious, previously-undocumented audio bug**: raw Minecraft voice-chat audio (a different path from [[wiki/codebase/files/audio_processors|audio_processors.py]]'s structured sound-event handling) gets decoded once into a correctly-scaled float32 array inside `handle_agent_websocket()`, then that value goes unused — all three downstream consumers re-decode the raw int16 bytes themselves, corrupting volume gating (permanently true) and speech transcription (a compounding ×32767 overflow). Fixed by decoding once and threading that single value through.
+
+**Also documented, not previously written up anywhere**: the two-consumer GRPO trigger situation is a genuinely intentional guarded design, not an accidental race — traced back to an earlier bug (a wrong attribute name meant this file's trigger was permanently inert, so the two consumers had never actually been simultaneously reachable until an unrelated fix made them both live).
+
+`config_loader.py` (94 lines) added as a quick pairing — it exists purely to satisfy one import `world_model.py` needs, nothing more.
+
+Linking convention re-verified across both.
+
+---
+
+## [2026-07-05] ingest | Devlord flagged a missed-files gap — full re-scan, 11 pages, one long-standing question resolved
+
+Devlord was right: the file list this whole sweep had been working from was incomplete. A full `find . -name "*.py"` re-scan turned up roughly 25 more real files, mostly small, foundational, and heavily cross-referenced _by name_ throughout every page written so far — without ever having been directly opened. Covered this pass:
+
+**The big one — `CLAUDE.md`'s own long-standing known-open-item, resolved**: `AUDIT_REPORT.md`'s duplicate-Config-class finding, flagged since 2026-07-03 as "not confirmed fixed," is now confirmed _and explained_ (not code-fixed — this is documentation, not a change to `divine-world-core` itself). `py_backend/config.py` and `py_backend/ai_core/config.py` aren't a stale copy — they serve two genuinely different runtime contexts: everything invoked from the repo root (`main.py`, `packager.py`, the launchers) imports `py_backend.config`; `ai_core/__init__.py` — live for every single `ai_core.*` import anywhere — imports the bare-path `ai_core.config` instead, matching the packaged-agent-executable convention every other `ai_core/*.py` file already uses. One real, verified inconsistency found within that: both copies share an identical comment naming two module paths that should be excluded from packaging (`py_backend.agent_spawner`, `ai_core.agent_spawner`), but neither copy's actual exclude list matches its own comment. Recorded on [[wiki/codebase/files/config-two-copies|a new page]], and `CLAUDE.md`'s known-open-items entry updated accordingly. Also added a Conventions note: two real files sharing a name should get one combined page (named to signal the collision, like `config-two-copies.md`), not two 90%-duplicate pages.
+
+**A real, previously-unflagged mismatch**: `obs_builder.py`'s `EMOTION_KEYS` (10 entries, including `curiosity`/`frustration`) doesn't match `emotion.py`'s actual `EmotionSystem.EMOTIONS` (8 entries, neither of those two present) — two of the 128 observation dimensions are permanently zero. Not confirmed as intentional (reserved for a future emotion?) or a genuine drift — flagged rather than guessed at.
+
+**A fourth instance of the stale-dimension pattern**: `rl/env.py`'s `DivineWorldEnv` class docstring still says `Box(50,)`/`Box(11,)` despite the constructor correctly building `Box(128,)`/`Box(13,)` — the docstring never got updated, though the actual code is correct this time (unlike the three prior instances, which were live tensors, not just documentation).
+
+Also newly covered: `emotion.py`, `personality.py`, `ai_core/__init__.py`, `logger_setup.py`, `los_filter.py` (a mechanical catalog for a file whose _concept_ was already folded into [[observation-space]], but which had never gotten its own page), `brain_capsule.py` (the actual `BrainCapsule` class [[memory-and-braincapsule]] describes narratively), `obs_builder.py` (the canonical 128-dim layout basically every neural file in this ingest has referenced without ever being read), `rl/policy.py` (`TransformerPolicy`/`GodTransformerPolicy` — referenced constantly, never directly read before now), and `agent_spawner.py` (where agents and their real Minecraft processes actually get created, and where each god's default persona/memory allocation is actually defined).
+
+Linking convention re-verified across the full batch.
+
+---
+
+## [2026-07-05] lint | Self-caught error: personality.py's earlier page was substantially wrong
+
+Found while investigating a `mc_gender.py` import in `agent_spawner.py` that turned out not to exist — the real import is `from ai_core.personality import GenderType, assign_npc_gender, assign_god_gender`, not a separate module. That correction led to re-reading `personality.py` in full, which surfaced a bigger problem: the earlier version of that page (written several ingests ago) described a `describe()` method and an `adjust(trait, delta)` method that don't exist anywhere in the actual file, and missed `gender`/`GenderType`/`to_dict()`/`from_dict()`/`apply_update()`/`similarity()` and all four module-level gender/breeding functions (`assign_npc_gender`, `assign_god_gender`, `can_breed`, `determine_child_gender`) entirely. The real method `reward_system.py` actually calls is `apply_update(delta_array, lr)` — confirmed directly against the call sites in `reward_system.py` — not the invented `adjust()`.
+
+Checked whether the wrong method names had propagated anywhere else (`reward_system.md`, `agent_spawner.md`) — they hadn't; `reward_system.md` only described behavior, never named the specific wrong method, so no further pages needed fixing. Both `personality.md` and `agent_spawner.md` are now corrected, with the error stated plainly rather than silently patched.
+
+Worth being honest about the likely cause for future sessions: `personality.py` was read via a batched `cat` alongside `emotion.py` in one tool call, and the description that followed reads like a plausible-sounding "what a Personality class probably has" rather than a careful line-by-line account of what this specific 54-line file actually contains. General lesson, not just about this one file: reading a small file in a batch with another one doesn't excuse skipping the same verification discipline applied everywhere else in this vault.
+
+---
+
+---
+
+## [2026-07-05] ingest | god_controls.py — partial resolution of a flagged open question
+
+[[god-abilities]] had explicitly flagged, as an open question rather than a confirmed bug, why `transform`/`revert` appear in `god_controls.py`'s ability dict for every god but not in `action_format_sync.py`'s Java-matching `GOD_ABILITY_NAMES` lists. Reading this file directly resolves half of it: `ability_names()` (which `encode_ability_to_action()`/`decode_action()` actually index into) does include `transform`/`revert` — they were never invisible to the Python-side encoding, since they're indexed against this file's own list, not `action_format_sync.py`'s. The remaining half is narrower now: `transform`/`revert` are handled Java-side by `GodDisguiseHandler` specifically (a different class than `ServerGodAbilityExecutor`, which the rest of `action_format_sync.py`'s list matches) — so the absence may be correct-by-design. Whether an incoming action frame's `god_ability="transform"` actually gets routed to `GodDisguiseHandler` rather than failing a `ServerGodAbilityExecutor` lookup wasn't re-confirmed this pass. [[god-abilities]] updated to state the narrower question rather than the original, vaguer one.
+
+Also newly documented: `use_god_ability()`'s two-call reward pattern (activate, then separately score once an `outcome` arrives) means a caller that never calls back with an outcome gets the ability activated but never scored — and the ability-dict iteration-order fragility this file's own fix history (Wither's `blue_skull` removal, Creaking's swap) already hints at, stated explicitly this pass.
+
+---
+
+## [2026-07-05] ingest | chat_system.py — a real open architectural question
+
+Read in full: `ChatMessage`, `UnifiedChatSystem`, and the four `main.py`-facing wrapper functions. Worth flagging clearly rather than documenting as settled: every call into `agent.brain` here is guarded by `hasattr()` with a fallback behind it (`process_language_input`, `learn_from_file`, `process_perception` — this last one not encountered anywhere else in this entire ingest, `should_speak`, `generate_speech`), as if written against an interface that might not always be fully implemented. Everything else read across this whole sweep confirms `BrainCore`/`LanguageIntelligence` _does_ always expose those methods (except `process_perception`, which doesn't appear to exist at all on `BrainCore` as read). This file also runs its own independent autonomous-speech loop (5s poll, `should_speak()`-gated) — a second implementation of the same concept [[cognitive_loop]]'s `_execute_autonomous_speech()` already covers.
+
+Not resolved: whether this file is the live routing path `main.py` actually wires in, a legacy layer mostly superseded by `agent.py`'s own direct FastAPI routes and `communication_protocol.py`'s WebSocket handlers, or something that runs alongside both. `main.py` is still unread — this is exactly the kind of question reading it should answer, rather than guessing here.
+
+---
+
+**Next session should start with**: `main.py` is now the natural next read — it should resolve whether `chat_system.py` is live, dead, or parallel. After that: `web_browser.py`, `packager.py`, `auto_packager.py`, `auto_connect_system.py`, `chat_launcher.py`, `frontend_builder.py`, `minecraft_launcher.py`, and all of `utils/`.

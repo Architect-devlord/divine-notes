@@ -16,7 +16,7 @@ Devlord's own original notes — unedited, unpolished, exactly as typed before a
 - [[raw/Ender_Dragon|Ender_Dragon]] — original Ender Dragon brainstorm. A numbered-list sketch, terser than the others.
 - [[raw/Wither|Wither]] — original Wither brainstorm.
 - [[raw/Oracle|Oracle]] — original Oracle brainstorm.
-
+- [[Idea regarding the old RPG version of DivineWorld]] - fate of the old RPG style DivineWorld
 ## Not from this batch yet
 
-Nothing else has been dropped in here since the initial 8. When something new lands in `raw/`, add it to this list and give it a one-line note the same way — that's the whole maintenance job for this file.
+Nothing else has been dropped in here since the initial 8 and 1 file. When something new lands in `raw/`, add it to this list and give it a one-line note the same way — that's the whole maintenance job for this file.

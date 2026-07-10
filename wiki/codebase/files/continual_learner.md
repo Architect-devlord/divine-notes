@@ -14,13 +14,13 @@ status: ingested
 ## Classes
 
 ### `PolicyNetwork`
-A plain 4-layer MLP (`nn.Module`): `obs_dim → hidden → hidden → hidden/2 → action_dim`, ReLU + LayerNorm + Dropout(0.1) on the first two blocks, `Tanh` output to keep actions in `[-1, 1]`. This is a separate, smaller network from the live `TransformerPolicy` — not a copy of it, which is precisely why `_sync_weights_from_live_policy()` below has to exist.
+A plain 4-layer Multi-Layer Perceptron (MLP) (`nn.Module`): `obs_dim → hidden → hidden → hidden/2 → action_dim`, ReLU + LayerNorm + Dropout(0.1) on the first two blocks, `Tanh` output to keep actions in `[-1, 1]`. This is a separate, smaller network from the live `TransformerPolicy` — not a copy of it, which is precisely why `_sync_weights_from_live_policy()` below has to exist.
 
 **Methods:**
 - `forward(x)` — standard forward pass through the `nn.Sequential` stack.
 
 ### `ValueNetwork`
-A smaller 3-layer MLP critic, same normalization pattern, single scalar output — no activation on the last layer since a value estimate isn't bounded.
+A smaller 3-layer Multi-Layer Perceptron (MLP) critic, same normalization pattern, single scalar output — no activation on the last layer since a value estimate isn't bounded.
 
 **Methods:**
 - `forward(x)` — forward pass.

@@ -18,4 +18,6 @@ If the world feels out of control or unsatisfactory you can trigger Divine Reset
 
 - Edit memories and personalities and test theories.
 
-See the journey [here](Journey.md)
+See the journey [here](Journey.md).
+Check out raw ideas [here](raw/index).
+Check out the description and docs of the codebase [here](index).
