@@ -2,11 +2,9 @@
 type: file
 status: ingested
 ---
-
-
 # chat_system.py
 
-💡 **Role**: a routing-only layer between GUI/game WebSockets and `agent.brain` — its own module docstring is explicit that it does no language processing or decision-making itself. **Open question, not resolved this pass**: every call into `agent.brain` here is guarded by `hasattr()` with a `_fallback_*` method behind it, which reads like defensive code written for an `NPCAgent`/`BrainCore` interface that might not always have `process_language_input`/`learn_from_file`/`should_speak`/`generate_speech` — but everything read elsewhere in this ingest confirms `BrainCore/LanguageIntelligence` _does_ always expose those methods once attached. Whether `main.py` (not yet read) actually wires this module in as the live routing path, or whether it's an earlier/parallel layer largely superseded by `agent.py`'s own direct FastAPI routes and `communication_protocol.py`'s WebSocket handlers, wasn't confirmed.
+💡 **Role**: a routing-only layer between GUI/game WebSockets and `agent.brain` — its own module docstring is explicit that it does no language processing or decision-making itself. **Resolved — see [[main]] for the full trace**: this module is not the live routing path. `main.py` never imports it (zero references, confirmed by direct search); `agent.py` never imports it either, and its own `/ws`/`/chat` routes call `process_chat()` directly with no `hasattr()` guarding of any kind; `auto_connect_system.py` doesn't touch it. The one surviving reference anywhere in the codebase is a single `try/except`-guarded call from [[cognitive_loop]]'s `_execute_file_processing()` — and even that call is functionally inert: this file is explicitly excluded from the packaged-agent build (`AGENT_EXCLUDE_MODULES`, both `config.py` copies), each agent subprocess would get its own disconnected `UnifiedChatSystem` singleton even when the import succeeds (subprocess-per-agent means no shared memory), and nothing anywhere ever calls `register_gui`/`register_game` to give it a live connection to deliver to in the first place. The `hasattr()` defensiveness that originally read as unexplained paranoia may have a real explanation, not yet confirmed: `main.py`'s `/api/agents/chat_heard` docstring states god agents run a separate `LLMOracleBrain`, not `BrainCore`/`LanguageIntelligence` — if accurate, this file's guards may have been written for that split rather than for no reason at all.
 
 ## Imports
 
@@ -51,7 +49,9 @@ A routing layer written defensively against an interface that might not always b
 
 ## Solutions
 
-Not resolved in this file — this is exactly the kind of open architectural question worth a direct answer from Devlord rather than a guess: is this module still the live routing path (in which case the fallbacks are dead code worth removing, and the autonomous-speech duplication with `cognitive_loop.py` is worth reconciling), or is it superseded by `agent.py`'s direct routes and `communication_protocol.py`'s WebSocket handlers (in which case the whole file might be one to flag on [[known-issues]] rather than treat as current)?
+Resolved this pass (full trace on [[main]]): this module is dead code, not a functioning parallel system. The `hasattr()` fallbacks are inert — nothing calls `handle_user_message`/`handle_file_upload`/`handle_minecraft_perception` from outside this file at all, so the code paths they guard never run either way. The autonomous-speech duplication with [[cognitive_loop]] flagged as a risk in Problems above is not actually a live duplication in practice: this file's own loop is never started, since `start_autonomous_speech()`/`register_gui()` have no external call sites. Whether to formally retire this file or repurpose it is Devlord's call, not this wiki's — but it should no longer be treated as an open live/legacy/parallel question.
+
+**Devlord's direction for any future rebuild** (recorded in full on [[main]]): route outbound speech through [[cognitive_loop]]'s own gated decision cycle rather than reintroducing an independent, ungated loop like this file's own dormant one — so the agent can choose not to speak, not default to speaking whenever a threshold clears. Confirmed this pass: `cognitive_loop.py`'s `_decide()` already defaults to a "do nothing this cycle" outcome and already gates speech behind `language_desire` plus a cooldown, so the gating mechanism itself already exists; what's actually being proposed is making sure it stays the only path, rather than this file's own loop (or something like it) running alongside it ungated.
 
 ## Files Required
 
@@ -59,4 +59,5 @@ None — every interaction with `agent.brain`/`agent.memory`/`agent.emotion` is 
 
 ## Files Used In
 
-- Presumably `main.py`, per this file's own docstring — not yet confirmed, since that file isn't read this pass.
+- [[cognitive_loop]] — one `try/except`-guarded call to `send_message()` inside `_execute_file_processing()`; confirmed functionally inert (packaging exclusion, per-process singleton isolation, and no registered connections — see [[main]] for the full reasoning).
+- **Not** `main.py` — confirmed by direct read this pass. This file's own docstring's claim to be main.py-facing does not hold up in the current codebase.

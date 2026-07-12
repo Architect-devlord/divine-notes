@@ -1,0 +1,60 @@
+---
+type: file
+status: ingested
+---
+# packager.py
+
+💡 **Role**: `AgentPackager` — builds a self-contained PyInstaller executable per agent, bundling `config.json`, an optional React frontend, the DivineWorld/DWClientBot mod jars, and a preconfigured UltimMC launcher. `brain.pcap` is deliberately **not** bundled into the exe — this file's own module docstring is explicit about why: it lives next to the exe and is read/written at runtime, and bundling it would mean auto-saves land inside the PyInstaller extraction dir (`_MEIPASS`) and get discarded on exit. [[architecture-overview]]'s "Packaging and deployment" section already covers this at a narrative level; this page adds the mechanical catalog and confirms the live path: `main.py` never imports this file directly — `auto_packager.py`'s `EnhancedAgentSpawner` does (`self.packager = AgentPackager(...)`, confirmed by direct read), and `main.py` instantiates `EnhancedAgentSpawner`. One layer removed, but genuinely live, unlike [[chat_system]].
+
+## Imports
+
+External: `os`, `sys`, `shutil`, `json`, `subprocess`, `tempfile`, `pathlib.Path`, `time`, `typing`, `logging`. Internal: `frontend_builder.FrontendBuilder` (bare import — not yet ingested, next in queue), `py_backend.config.Config` (see [[config-two-copies]]), `py_backend.utils.mc_uuid.get_minecraft_uuid` (not yet ingested). `AgentNameManager` is imported lazily in two places instead of at module level (`_find_ultimmc()` and `package_agent()`).
+
+## Classes
+
+### `AgentPackager`
+
+- `__init__(output_dir=None)` — output root defaults to `Config.NPC_APPLICATIONS_DIR`; creates a `.build_tmp/` subdirectory for PyInstaller intermediates so they never land in the project root. Resolves `frontend_dir`/`mod_jar`/`client_jar`/`ultimmc_path` once, up front.
+- `_find_frontend_dir()` — `Config.FRONTEND_DIR` first, then four fallback candidates under the project root, each checked for a `package.json`.
+- `_find_mod_jar()` — `Config.MOD_JAR` first, then globs `DivineWorld/build/{libs,reobfJar/libs}` for a jar with "divine" in its name.
+- `_find_ultimmc()` — six-tier, cross-platform (Linux/Windows/macOS) discovery: `agents.json`'s `minecraft_path` → `DW_ULTIMMC_PATH` env var → project-relative `UltimMC/` → a long list of platform-specific user-install locations → `PATH` lookup → an interactive terminal prompt as a last resort (skipped cleanly if stdin isn't a TTY). Each platform gets its own idea of what "has a valid UltimMC executable" means (`bin/UltimMC.exe` on Windows, `Contents/MacOS/UltimMC` inside a `.app` bundle on macOS, `bin/UltimMC` on Linux).
+- `package_agent(agent_id, brain_capsule_path, agent_name=None, gender="neutral", agent_type="npc", mode="minecraft", icon_path=None, include_frontend=True, include_mod=True, include_client_jar=True, backend_port=11400, agent=None)` — the orchestrator. Validates the brain file exists and is a sane size (rejects both oversized and suspiciously-small files against `Config.MAX_BRAIN_SIZE_MB`), resolves a clean Minecraft display name and UUID, runs `_setup_ultimmc()` if a launcher was found, copies the brain capsule, optionally builds the frontend and copies mod jars, generates `launcher.py` and `config.json`, builds the executable, and assembles the final portable folder. Returns a dict of every resulting path. The `mode` parameter itself was a fix — see Problems/Solutions.
+- `_setup_ultimmc(agent_id, agent_dir, agent_uuid, minecraft_name)` — clones the discovered UltimMC install into `agent_dir/UltimMC`, injects a new account into `accounts.json` (deactivating any existing accounts first, generating a fresh `clientToken`), and — if a `1.20.1` template instance exists in the source UltimMC install — clones it into a per-agent instance folder and copies the mod jars into its `.minecraft/mods/`.
+- `_copy_brain_capsule(brain_path, agent_dir, gender, agent_type, agent=None)` — copies `brain.pcap`; if it doesn't exist yet and a live `agent` object was passed in, calls `agent.save()` to produce it first rather than failing outright. Also re-resolves `gender` by loading the brain capsule directly (`torch.load`, raw, not through [[brain_capsule]]'s own loader) and preferring whatever gender is actually stored there over the caller-supplied default — then writes that resolved value into the `.pcap.json` sidecar's metadata.
+- `_create_launcher(agent_id, agent_dir, has_frontend, agent_type, backend_port, minecraft_name, mode="minecraft")` — generates `launcher.py` as an embedded string template (see below for what it actually contains). The `mode` plumbing here was the core of a documented fix — see Problems/Solutions.
+- `_create_config(agent_id, agent_dir, gender, agent_type, backend_port, mode="minecraft")` — writes `config.json`: id/type/mode/gender/version/ports/a `modes` flags dict/a `features` flags dict.
+- `_build_executable(agent_id, launcher_path, agent_dir, icon_path, has_frontend)` — runs PyInstaller. `--onedir`, explicitly not `--onefile` — the in-line comment gives a real, specific reason: PyTorch's `libtorch_cpu.so` is roughly 2GB, and `--onefile`'s runtime zlib decompression can't handle it (errors out). Pre-flight-validates every module in `Config.AGENT_HIDDEN_IMPORTS` actually resolves via `importlib.util.find_spec()` before ever invoking PyInstaller, so a bad hidden-import list fails fast with a clear warning instead of producing a exe that crashes on first launch. Moves the resulting `dist/{agent_id}/` folder to `agent_dir/bin/`.
+- `_create_portable_package(agent_id, agent_dir, exe_path, has_frontend)` — despite the name, **does not itself copy UltimMC, mods, or frontend** in the current code — those all already happened earlier in `package_agent()`'s own top-level flow (`_setup_ultimmc()`, and the mods/frontend blocks directly in `package_agent()`). This method only verifies the expected files are present (logs a warning, doesn't fail, if not) and writes `README.md`. See Problems/Solutions for why this matters against [[known-issues]]'s existing account of a bug here.
+- `cleanup_build_artifacts()` — removes `.build_tmp/`.
+- `get_package_info(agent_id)` — reads back the expected paths and existence for an already-packaged agent, without re-running anything.
+
+## The generated `launcher.py` template — substantial enough to document on its own
+
+`_create_launcher()` writes out a real, freestanding Python script (roughly 330 lines), not just a stub — this is the actual entry point every packaged agent runs, on a machine that may have no other project files at all. Its own internal pieces:
+
+- **Frozen vs. dev dual path.** `sys.frozen` (set by PyInstaller) selects between `sys._MEIPASS`-relative imports (the extracted bundle) and, for a plain-Python dev run, walking upward from the launcher's own location looking for an `ai_core/` directory rather than assuming a fixed number of parent levels — so the same generated file works whether it's the frozen exe or someone running `launcher.py` directly against project source.
+- `load_config()` — reads `config.json`, falling back to the values baked in at packaging time if the file's missing.
+- `try_ultimmc(server_addr, agent_name)` — the actual UltimMC CLI invocation: `-d <ultimmc_dir> -l AGENT_ID -s server_addr -a agent_name -o -n agent_name`. **This is [[known-issues]]'s already-documented "preferred launch pattern," but that page's quoted snippet doesn't quite match current code** — it shows `-l agent_name` (the mutable display name); the actual generated code uses `-l AGENT_ID` (the stable internal identifier) instead, which makes more sense for an instance-folder label that shouldn't change if a display name is edited later. Corrected on [[known-issues]] directly.
+- `launch()` — the mode dispatch this whole fix was about (see Problems/Solutions): `chat` mode starts `agent.start_autonomous_speech()` only (no `CognitiveLoop` — it's built around Minecraft's perceive/deliberate cycle and has no meaning for a text-only deployment); `minecraft`/`autonomous` both start `agent.start_autonomous_mode()` (`CognitiveLoop`), differing only in what `act()` ends up calling downstream. Minecraft-server detection and `try_ultimmc()` only run in `minecraft` mode. Shutdown on `KeyboardInterrupt` sets the correct stop-flag for whichever loop is actually running (`agent._autonomous_speech_running = False` or `agent.cognitive_loop.running = False`) before the final save, so the in-flight tick finishes rather than being cut off mid-write.
+- `_run_async_loop()` — runs either async loop method on its own thread with a private event loop, since `launch()` itself is synchronous.
+- `_serve_frontend()` — a bare `http.server`/`socketserver` static file server for the bundled frontend, opened in the default browser.
+
+## Problems (faced by traditional AI systems / LLMs)
+
+Distributing a trained, stateful AI agent as something that runs standalone — on a machine with no Python, no project source, possibly no internet — runs into two problems that pull in opposite directions. First: a real ML runtime is not small (PyTorch alone dwarfs a typical single-file bundle's assumptions), so naive single-file packaging approaches can fail outright rather than just being slow. Second: the whole point of a persistent agent is that its state keeps changing — weights, memory, personality drift over time — which is in direct tension with "bundle everything into one immutable artifact."
+
+## Solutions
+
+`--onedir` instead of `--onefile` sidesteps the size problem entirely rather than working around it — no runtime decompression step means no decompression failure mode. `brain.pcap` living beside the exe rather than inside it resolves the mutability problem the same way: by not pretending the mutable part is part of the frozen bundle in the first place. The generated-launcher approach (a template written out fresh per agent, containing its own frozen/dev branch) means one code path handles both "this is a portable exe on a strange machine" and "this is a dev running the source directly," rather than maintaining two separate entry points that could drift apart. The `mode` fix follows the same pattern seen elsewhere this ingest ([[agent]]'s `run_standalone_agent()` had the identical bug in the identical shape): a parameter that looks like it should control behavior, but didn't actually reach the code that needed it, so every packaged agent silently ran the same generic behavior regardless of what it was configured to be. Both fixes are attributed to the same named plan ("Consolidate Duplicate Implementations plan, Step 5") — evidently a real, deliberate pass across multiple files, not a one-off.
+
+## Files Required
+
+- `frontend_builder.py` — `FrontendBuilder` (bare import, not yet ingested — next in queue).
+- [[config-two-copies]] — `py_backend/config.py` (`Config`).
+- `py_backend/utils/mc_uuid.py` — `get_minecraft_uuid`, `AgentNameManager` (not yet ingested).
+- **Generates, does not import**: `ai_core/agent.py` (`NPCAgent`) and `ai_core/brain_language.py` (`add_language_to_brain`) appear only as literal text inside the `launcher.py` template this file writes out — `packager.py`'s own process never imports either. The generated file is what imports them, later, in a different process, possibly on a different machine.
+
+## Files Used In
+
+- `auto_packager.py` — `EnhancedAgentSpawner` directly constructs and calls into this file's `AgentPackager` (`self.packager = AgentPackager(...)`, confirmed by direct read). This is the actual live path down from `main.py`, which instantiates `EnhancedAgentSpawner` rather than `AgentPackager` itself.
+- `main.py` — indirectly, per above; also independently confirms this file's "no `DW_` prefix" executable-naming convention in its own comments, matching a comment in this file that says the same thing about `main.py` — a nice mutual cross-check, both sides agreeing without either being edited to match the other.

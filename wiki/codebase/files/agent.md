@@ -2,7 +2,6 @@
 type: file
 status: ingested
 ---
-
 # agent.py
 
 💡 **Role**: two things in one file — the `NPCAgent` class every Civilian/God Agent actually is, and a standalone runnable module (its own FastAPI app plus a `run_standalone_agent()`/CLI bootstrap) that can run one agent on its own, without `main.py`. [[agent-runtime]] already covers `NPCAgent`'s 13-phase construction order, the three modes, the 13/18-dim action space, and save/load in real depth — kept terse here. This page's actual additions: the module-level routes as concrete handlers (not just a list of paths), the standalone-runner functions (not on the topic page at all), and two fixes the topic page doesn't mention.
@@ -13,13 +12,13 @@ External: `fastapi`, `uvicorn`, `argparse`, `signal`, `json`, `time`, `asyncio`,
 
 ## Module-level FastAPI app & routes
 
-A second, separate app instance from `main.py`'s — this is the **per-agent** server, bound to the agent's own `backend_port`, because the agent's own browser/controller instances live on `self`, not on any shared manager. [[electron-frontend]] and [[human-controller-debug]] both talk to *this* app, not `main.py` — worth knowing since neither of those pages currently says so explicitly.
+A second, separate app instance from `main.py`'s — this is the **per-agent** server, bound to the agent's own `backend_port`, because the agent's own browser/controller instances live on `self`, not on any shared manager. [[electron-frontend]] and [[human-controller-debug]] both talk to _this_ app, not `main.py` — worth knowing since neither of those pages currently says so explicitly.
 
 - `GET /status`, `GET /thoughts` — plain status/thought-log reads off `global_agent`.
 - `POST /chat` — the `speaker_id` field (see [[electron-frontend]]'s `VISITOR_ID`) is what feeds [[reward-and-learning-stack]]'s familiarity reward term.
 - `POST /api/agents/{agent_id}/web/allow` — updates the attached browser's allowed-domain set.
-- `POST/GET /browser/navigate|click|type|scroll|screenshot|stats|history|allowed_sites` — direct pass-through to `agent.browser`, a `WebBrowser` instance (not yet given its own page).
-- `GET /api/controller/detect-devices`, `POST /api/controller/activate`/`deactivate`, `GET /api/controller/status` — this is the *real* "Controller Mode" [[electron-frontend]]'s `ControllerSafety.jsx` UI is for (camera/mic/filesystem/network access for the AI itself) — confirmed here as backed by `ControllerRuntime` from `py_backend/utils/dw_controller.py`, lazily imported per-request inside `_get_controller()`. Entirely separate code from [[human-controller-debug]]'s `human_controller_server.py`, despite both using the literal string "controller" — two unrelated systems, now confirmed from both directions.
+- `POST/GET /browser/navigate|click|type|scroll|screenshot|stats|history|allowed_sites` — direct pass-through to **`agent.web_browser`** (corrected 2026-07-05 — this page previously said `agent.browser`; every real call site, in this same file, uses `web_browser`), a `WebBrowser` instance — see [[web_browser]]. Two of the eight routes are broken: `GET /browser/screenshot` calls a `screenshot_jpeg()` method that doesn't exist on `WebBrowser` (always 500s), and `POST /browser/scroll` gates its real logic behind a `hasattr(..., "_page")` check that's never true, so it silently no-ops while still reporting success. Full detail on [[web_browser]].
+- `GET /api/controller/detect-devices`, `POST /api/controller/activate`/`deactivate`, `GET /api/controller/status` — this is the _real_ "Controller Mode" [[electron-frontend]]'s `ControllerSafety.jsx` UI is for (camera/mic/filesystem/network access for the AI itself) — confirmed here as backed by `ControllerRuntime` from `py_backend/utils/dw_controller.py`, lazily imported per-request inside `_get_controller()`. Entirely separate code from [[human-controller-debug]]'s `human_controller_server.py`, despite both using the literal string "controller" — two unrelated systems, now confirmed from both directions.
 - `POST /api/upload` — writes an uploaded file to disk and calls `agent.brain.learn_from_file()`, optionally synchronously (`sync=true` in the form) or as a background task.
 - `WS /ws` — general chat/thought/activity broadcast (see [[electron-frontend]]).
 - `WS /ws/agent` — the binary perception/action channel the Java mod actually uses (see [[communication-protocol]]).
@@ -27,6 +26,7 @@ A second, separate app instance from `main.py`'s — this is the **per-agent** s
 ## Classes
 
 ### `NPCAgent`
+
 See [[agent-runtime]] for construction order, modes, action space, and save/load — not repeated here. Additional methods not covered there:
 
 - `perceive()` / `observe_environment(observation)` — pull the latest state into the agent and hand it to `cognitive_loop`/`brain` as appropriate.
@@ -43,13 +43,13 @@ No async methods on `NPCAgent` itself — `start_autonomous_mode()`/`start_auton
 
 ## Functions & Async Functions (module-level, outside the class)
 
-- `run_server(port)` *(async)* — the actual `uvicorn.Server` runner for this file's own FastAPI app.
-- `run_standalone_agent(...)` *(async)* — constructs an `NPCAgent` directly (bypassing `main.py` entirely) and drives it through one of three modes:
-  - `autonomous` — starts `CognitiveLoop` via `start_autonomous_mode()`.
-  - `minecraft` — **a real fix, not on the topic page**: this branch used to start only the TCP-fallback action loop and wait for a Minecraft connection, never actually starting `CognitiveLoop` — meaning deliberation/GRPO/skill-tracking silently never ran for any agent launched this way. Now calls `start_autonomous_mode()` first (non-blocking), *then* starts the TCP loop as the documented WS-disconnection fallback it was always meant to be, then checks for a bundled UltimMC launcher and waits (up to 300s) for the mod to connect.
-  - `chat` — **also a real fix**: previously did nothing at all unless the separate `chat_interface` console flag was also set. Now unconditionally starts `start_autonomous_speech()` (a lightweight timer-driven engagement loop, not `CognitiveLoop`, which has no meaning without Minecraft perception) as a background task regardless of the console-chat flag.
-  - All three modes then enter a periodic-save loop (every 300s, timestamp-based rather than a modulo check — a fixed bug, since `% 300` on a drifting `asyncio.sleep(1)` can skip the exact boundary under event-loop load) until `duration` elapses or `KeyboardInterrupt`.
-- `chat_loop(agent)` *(async)* — the interactive stdin console reader, gated behind `--chat`, distinct from `chat` mode itself.
+- `run_server(port)` _(async)_ — the actual `uvicorn.Server` runner for this file's own FastAPI app.
+- `run_standalone_agent(...)` _(async)_ — constructs an `NPCAgent` directly (bypassing `main.py` entirely) and drives it through one of three modes:
+    - `autonomous` — starts `CognitiveLoop` via `start_autonomous_mode()`.
+    - `minecraft` — **a real fix, not on the topic page**: this branch used to start only the TCP-fallback action loop and wait for a Minecraft connection, never actually starting `CognitiveLoop` — meaning deliberation/GRPO/skill-tracking silently never ran for any agent launched this way. Now calls `start_autonomous_mode()` first (non-blocking), _then_ starts the TCP loop as the documented WS-disconnection fallback it was always meant to be, then checks for a bundled UltimMC launcher and waits (up to 300s) for the mod to connect.
+    - `chat` — **also a real fix**: previously did nothing at all unless the separate `chat_interface` console flag was also set. Now unconditionally starts `start_autonomous_speech()` (a lightweight timer-driven engagement loop, not `CognitiveLoop`, which has no meaning without Minecraft perception) as a background task regardless of the console-chat flag.
+    - All three modes then enter a periodic-save loop (every 300s, timestamp-based rather than a modulo check — a fixed bug, since `% 300` on a drifting `asyncio.sleep(1)` can skip the exact boundary under event-loop load) until `duration` elapses or `KeyboardInterrupt`.
+- `chat_loop(agent)` _(async)_ — the interactive stdin console reader, gated behind `--chat`, distinct from `chat` mode itself.
 - `main()` — the CLI entry point (`argparse`, ~15 flags mirroring `run_standalone_agent()`'s parameters), calling `asyncio.run(run_standalone_agent(...))`.
 
 ## Problems (faced by traditional AI systems / LLMs)
@@ -67,6 +67,7 @@ Both problems get the same kind of fix here: trace the actual call graph for eac
 - `brain_language.py`, `continual_learner.py` (see [[continual_learner]]), `reward_system.py`, `world_model.py`, `vision.py`, `audio_processors.py`, `cognitive_loop.py` (see [[cognitive_loop]]), `policy_bridge.py`, `self_supervised_trainer.py`, `skill_tracker.py` — none except `continual_learner.py`/`cognitive_loop.py` yet has its own file-level page; see [[reward-and-learning-stack]]/[[perception-and-actuation]]/[[language-system]] for narrative coverage in the meantime.
 - `rl/policy.py` — `TransformerPolicy`/`GodTransformerPolicy` (lazy import).
 - `ai_core/god_controls.py` — `GodControlSystem` (lazy import, god branch only).
+- [[web_browser]] — `add_web_browsing_to_agent()` (lazy import inside `__init__`, sets `agent.web_browser`) — missing from this list until corrected 2026-07-05; see that page for the full catalog and two routing bugs it surfaced.
 - `py_backend/utils/dw_controller.py` — `ControllerRuntime` (lazy import inside `_get_controller()`) — **not yet read this pass**; the one open thread from this file's own ingest.
 
 ## Files Used In

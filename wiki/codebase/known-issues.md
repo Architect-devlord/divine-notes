@@ -2,7 +2,6 @@
 type: reference
 status: ingested
 ---
-
 # Known Issues
 
 💡 **What this is**: a synthesis of `Problems.md`, `AUDIT_REPORT.md`, and `FIXES_APPLIED.md` — three separate running documents in the repo root that overlap in places. This page exists so a future session doesn't have to cross-reference all three by hand. (Per Devlord: the `docs/` folder is separately outdated/broken and excluded from this wiki entirely — not the same thing as these three files, which are current.)
@@ -12,9 +11,10 @@ status: ingested
 Two related bugs, both fixed:
 
 1. **Packaging race condition** — `wait_for_connection()` was being called before `UltimMC` (the bundled Minecraft instance launcher — see [[architecture-overview]] → Packaging) was actually packaged and started, causing timeouts. Fixed by checking UltimMC availability first: if present, wait for the Minecraft connection (up to 120s); if not, log clearly that manual setup is needed and don't block agent startup on it.
-2. **Wrong UltimMC executable** — `_create_portable_package()` in `packager.py` wasn't copying the UltimMC folder into the portable package at all, even though `_setup_ultimmc()` had already prepared it — so packaged agents fell back to some other UltimMC install instead of their own preconfigured one (correct Minecraft account, Forge instance, mods, data directories already set up). Fixed by explicitly copying the folder.
+2. **Wrong UltimMC executable** — originally attributed to `_create_portable_package()` in `packager.py` not copying the UltimMC folder into the portable package, even though `_setup_ultimmc()` had already prepared it. **Correction, confirmed against current [[wiki/codebase/files/packager|packager.py]]**: in the code as it stands today, `_create_portable_package()` doesn't copy UltimMC, mods, or frontend at all — it only checks expected files exist and writes `README.md`. The actual copy happens earlier, directly in `_setup_ultimmc()` (called from `package_agent()` before `_create_portable_package()` ever runs), into `agent_dir/UltimMC` — and since `agent_dir` and the final package directory are the same path, the net effect described (UltimMC present in the finished package) does still hold, just via a different method than originally attributed. Likely a refactor since this bug was first written up, not a re-introduction of the original bug.
 
 **Preferred launch pattern** (from `Problems.md`, still relevant if touching `packager.py`):
+
 ```python
 def try_ultimmc(server_addr, agent_name):
     ult = AGENT_DIR / "UltimMC" / "bin" / "UltimMC"
@@ -25,7 +25,8 @@ def try_ultimmc(server_addr, agent_name):
         "-l", agent_name, "-s", server_addr, "-a", agent_name, "-o", "-n", agent_name,
     ], cwd=str(AGENT_DIR))
 ```
-Using `-s <server> -l <instance> -o <agent_name>` handles account creation and mod registration automatically — this is the "preferred method," called out explicitly as such in the source doc.
+
+Using `-s <server> -l <instance> -o <agent_name>` handles account creation and mod registration automatically — this is the "preferred method," called out explicitly as such in the source doc. **One flag has drifted from this historical snippet, confirmed against the actual generated launcher today**: current code passes `-l AGENT_ID` (the stable internal identifier), not `-l agent_name` (the mutable display name) as shown above — sensible, since an instance-folder label shouldn't change just because a display name is edited later. The rest of the pattern matches exactly.
 
 ## Audit findings (AUDIT_REPORT.md, dated May 21 2026)
 
