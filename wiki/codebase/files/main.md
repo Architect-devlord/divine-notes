@@ -62,7 +62,7 @@ The actual orchestrator. One instance (`agent_manager`) owns every running agent
 
 ## Module-level FastAPI app & routes
 
-`app = FastAPI(..., lifespan=lifespan)`, CORS wide open (`allow_origins=["*"]`, `allow_credentials=False` — has to be `False` alongside a wildcard origin, noted in-line as FIX M-01). Immediately after construction: `agent_manager = AgentProcessManager()` then `integrate_with_backend(app, agent_manager)` — this is `main.py`'s one call into `auto_connect_system.py`, not yet ingested at file level; not yet confirmed what routes it adds beyond what's catalogued here.
+`app = FastAPI(..., lifespan=lifespan)`, CORS wide open (`allow_origins=["*"]`, `allow_credentials=False` — has to be `False` alongside a wildcard origin, noted in-line as FIX M-01). Immediately after construction: `agent_manager = AgentProcessManager()` then `integrate_with_backend(app, agent_manager)` — this is `main.py`'s one call into [[auto_connect_system]]. **Confirmed, closing a note this page previously left open**: that call registers four more routes — `POST /api/autoconnect/scan`, `POST /api/autoconnect/launch`, `POST /api/autoconnect/wait`, `GET /api/autoconnect/status` — and constructs the one `AutoConnectSystem` instance for the process, stored at `app.state.auto_connect`. Full detail, including a significant bug in the startup auto-launch this wires up, on [[auto_connect_system]].
 
 **GUI & its WebSocket**
 
@@ -84,12 +84,13 @@ The actual orchestrator. One instance (`agent_manager`) owns every running agent
 
 - `POST /api/agents/spawn_single` — the GUI's "spawn NPC" action and the Java mod's own single-NPC spawn path. Resolves a random name/gender/default-personality if not supplied, de-duplicates the agent ID against existing `npc_applications/` folders, and calls `start_agent_process()`.
 - `POST /api/agents/start` — a more generic version of the above, mode defaults to `"autonomous"` rather than `"minecraft"`, accepts a raw `args` list passed straight through as `additional_args`.
-- `POST /api/agents/{agent_id}/stop`, `GET /api/agents/{agent_id}/status`, `POST /api/agents/{agent_id}/package`, `POST /api/agents/{agent_id}/cleanup` — direct wrappers over the matching `AgentProcessManager` methods.
+- `POST /api/agents/{agent_id}/stop`, `GET /api/agents/{agent_id}/status`, `POST /api/agents/{agent_id}/cleanup` — direct wrappers over the matching `AgentProcessManager` methods.
+- `POST /api/agents/{agent_id}/package` — **corrected 2026-07-05**: previously grouped with the three routes above as another "direct wrapper over the matching `AgentProcessManager` method." It isn't one — `AgentProcessManager` has no `package_agent` method at all. This route calls `agent_manager.spawner.package_agent(...)` directly, reaching past `AgentProcessManager` into `EnhancedAgentSpawner`'s own method (see [[auto_packager]], which itself reaches two layers further into `AgentPackager`).
 - `GET /api/agents/list` — merges currently-running agents with any `brain.pcap` found under `Config.BRAINS_DIR` that isn't currently running (`available_brains`), so the GUI can show stopped-but-resumable agents too.
 
 **World events from the Java mod**
 
-- `POST /api/player_event` — `"connected"` auto-starts the agent's backend process if it isn't already running (god agents get `--gender dual`), returns any stored `spawn_pos` so Java can teleport the agent on join; `"disconnected"` is acknowledged only, no process action taken.
+- `POST /api/player_event` — `"connected"` first feeds `app.state.auto_connect.mark_connected(agent_id)` if that state exists (see [[auto_connect_system]] — not previously noted on this page), then auto-starts the agent's backend process if it isn't already running (god agents get `--gender dual`), returns any stored `spawn_pos` so Java can teleport the agent on join; `"disconnected"` is acknowledged only, no process action taken.
 - `POST /api/breeding/event` — routes through `app.state.breeding_system.initiate_breeding()` (see [[breeding_system]]) when available, computing real pregnancy/child-gender/due-time data; falls back to a direct-spawn offspring creation (blended-personality-plus-jitter, no pregnancy period) if `BreedingSystem` isn't wired into `app.state` yet, logging a warning when that happens. Comment marks this FIX B-04.
 - `POST /api/agents/chat_heard` — **calls a method that does not exist.** Its own docstring is explicit about intent: NPC agents get overheard proximity chat over their persistent `/ws/agent` WebSocket, but god agents (per this docstring: _"run a separate LLM brain (`LLMOracleBrain`) and are not connected via a persistent WebSocket"_ — a detail not previously surfaced anywhere in this ingest; not chased down this pass, flagged below) need an HTTP fallback instead. The handler is supposed to push the overheard message into `agent_manager.get_chat_queue(hearer_id)` — but `get_chat_queue` is never defined anywhere in this file, on `AgentProcessManager`, or anywhere else in the repository (confirmed by a repo-wide search). Every call to this route raises `AttributeError` at that line, which FastAPI turns into an unhandled 500. There is currently no working path for a god agent to receive overheard proximity chat via this endpoint.
 
@@ -111,12 +112,21 @@ The actual orchestrator. One instance (`agent_manager`) owns every running agent
 ## Functions (module-level, outside the app/class)
 
 - `_extract_spawn_pos(args)` — pulls `--spawn-x`/`-y`/`-z` values out of an `additional_args` list; returns `{}` unless all three are present.
+    
 - `sanitize_agent_id(name)` — lowercases, replaces spaces with underscores, strips anything outside `[a-z0-9_]`.
+    
 - `list_registered_agents()` — reads `agents.json` via `get_agents_manager()` and returns every male NPC / female NPC / god as `{"agent_id": ..., "type": ...}`.
+    
 - `register_agent(agent_id, agent_uuid, agent_type, custom_name, gender)` — writes into `agents.json` only (usercache files are the MC server's own concern, not this file's). For a god, registers directly under its god type. For an NPC, resolves gender in order: caller-supplied → already-registered-as-male → already-registered-as-female → default `"male"` with a logged warning. The in-line FIX comments describe this resolution order as already correct (this is FIX 2's actual implementation) — see Problems/Solutions for the _other_, still-hardcoded gender-guessing logic elsewhere in this file that this fix didn't reach.
+    
 - `lifespan(app)` _(async context manager)_ — startup: logs a banner, wires `BreedingSystem` into `app.state` (cross-wiring the spawner's own `_breeding_system` attribute so `EnhancedAgentSpawner._post_spawn()` can auto-attach new agents to it too), starts a 10-second `_breeding_tick_loop()` background task, then auto-launches every already-packaged agent found by `auto_connect`'s `scan_agents_folder()`. Shutdown: calls `agent_manager.cleanup_all()`.
-- `start_chat_interface(agent_id, brain_path, config)` — headed `"chat_launcher helper (used when main.py is imported as a module)"`; not called anywhere inside this file itself. Constructs an `NPCAgent` directly (see [[agent]]), loads its brain if the path exists, launches **this same file** as a subprocess (`uvicorn py_backend.main:app` on a configured port), then either serves the built Electron frontend (`npx serve`) or runs its dev server (`npm run dev`) if `Config.FRONTEND_DIR` exists, or just prints the backend/GUI URLs if it doesn't. Presumed caller is `chat_launcher.py` (not yet read — next in the ingest queue), based on the comment; not yet confirmed directly.
+    
+- `start_chat_interface(agent_id, brain_path, config)` — headed `"chat_launcher helper (used when main.py is imported as a module)"`. **Confirmed dead code, corrected 2026-07-05** (previously described here as "presumed caller is `chat_launcher.py`... not yet confirmed"): [[chat_launcher]] has its own, separate, more capable implementation of the identical function name — a genuine independent reimplementation, not a wrapper around this one — and a repo-wide search turns up zero callers of _this_ function anywhere. [[auto_connect_system]]'s `_launch_frontend_only()`, the only real caller of anything named `start_chat_interface`, imports [[chat_launcher]]'s version specifically. This function still does what's described below; it just never runs.
+    
+    Constructs an `NPCAgent` directly (see [[agent]]), loads its brain if the path exists, launches **this same file** as a subprocess (`uvicorn py_backend.main:app` on a configured port), then either serves the built Electron frontend (`npx serve`) or runs its dev server (`npm run dev`) if `Config.FRONTEND_DIR` exists, or just prints the backend/GUI URLs if it doesn't.
+    
 - `if __name__ == "__main__":` entry point — parses `--port`/`--host`/`--reload`/`--cli`/`--gui` (mutually exclusive), prompts interactively for CLI-vs-GUI if neither flag is given, opens a browser to `/gui` on a background thread if GUI mode, then calls `uvicorn.run("main:app", ...)`.
+    
 
 ## The chat_system.py question, resolved
 
@@ -163,6 +173,6 @@ The process-orchestration problem gets a genuinely solid answer here: subprocess
 
 ## Files Used In
 
-- `chat_launcher.py` — presumed caller of `start_chat_interface()`, based on this file's own in-line comment; not yet confirmed, since `chat_launcher.py` hasn't been read yet.
+- **Not** [[chat_launcher]], despite this file's own in-line comment suggesting otherwise — confirmed by direct read; see the correction above and the full account on [[chat_launcher]].
 - The Java server mod (`DivineWorld`) — calls `/api/player_event`, `/api/breeding/event`, `/api/agents/chat_heard`, and presumably the genesis/god-spawn routes, per [[architecture-overview]]'s already-documented `PythonBackendClient.java` → REST API direction.
 - Itself, indirectly — `start_chat_interface()` launches `uvicorn py_backend.main:app` as a subprocess, i.e. this file can end up re-invoking itself as an ASGI target under a second code path.

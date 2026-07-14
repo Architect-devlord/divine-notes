@@ -1,0 +1,58 @@
+---
+type: file
+status: ingested
+---
+# auto_packager.py
+
+💡 **Role**: two classes. `AutoPackagingSystem` wraps [[wiki/codebase/files/packager|packager.py]]'s `AgentPackager` with background/sync scheduling and brain-file-stability waiting. `EnhancedAgentSpawner` extends [[agent_spawner]]'s base `AgentSpawner` with that packaging, optional UltimMC delegation (composing [[agent_spawner]]'s own `UltimMCAgentSpawner`, exactly as that page's Files Used In already anticipated), and breeding-system attachment. Its own module docstring calls this "the spawner used everywhere in `py_backend`" — confirmed: `main.py`'s `AgentProcessManager` instantiates it directly, and [[breeding_system]] receives an instance too (both already correctly documented on their own pages, written before this file was read, and both held up under direct verification here — no correction needed to either).
+
+**A real correction to my own last two pages, caught properly this time only by reading this file's actual class boundaries rather than trusting a grep match's line number**: [[wiki/codebase/files/packager|packager.md]] and the packager.py entry on `index.md` both said `EnhancedAgentSpawner` directly constructs `AgentPackager` (`self.packager = AgentPackager(...)`). That exact line exists — but it's inside `AutoPackagingSystem.__init__`, not `EnhancedAgentSpawner.__init__`. The real chain is three layers: `EnhancedAgentSpawner.packager` is an `AutoPackagingSystem`; only `AutoPackagingSystem.packager` is the actual `AgentPackager`. `EnhancedAgentSpawner.package_agent()`'s own body confirms this unambiguously — it calls `self.packager.packager.package_agent(...)`, two hops. Both pages corrected below. A second, smaller thing caught the same way: `main.md`'s routes section describes `/api/agents/{agent_id}/package` as "a direct wrapper over the matching `AgentProcessManager` method" — grouped together with three sibling routes that really are that. This one isn't; `AgentProcessManager` has no `package_agent` method at all. The route calls `agent_manager.spawner.package_agent()` directly — this file's method, one layer further down than the other three routes in that same sentence. Corrected there too.
+
+## Imports
+
+`os`, `json`, `logging`, `threading`, `pathlib.Path`, `typing` (`Optional`, `List`), `queue` (`Queue`, `Empty`), `time` — all external/stdlib. Internal: `ai_core.agent.NPCAgent` (bare path, type-hint only — this file never constructs one, only receives already-spawned instances), [[agent_spawner]] (`AgentSpawner`, the real base class this time — contrast `main.py`, which imports the same class and never uses it), [[wiki/codebase/files/packager|packager]] (`AgentPackager`, guarded `try/from packager import.../except ImportError: from py_backend.packager import...`, same fallback-import pattern packager.py itself uses for its own dependents), [[config-two-copies]] (`py_backend.config.Config`). One more, lazy, inside `EnhancedAgentSpawner.__init__`: `ai_core.agent_spawner.UltimMCAgentSpawner`, guarded by a genuinely broad `except (ImportError, Exception)` — catches everything, not just import failures, so any error during that class's own construction degrades to "UltimMC not available" rather than propagating.
+
+The module docstring is explicit about why `EnhancedAgentSpawner` lives here and not in [[agent_spawner]] itself: [[breeding_system]] imports the spawner it needs from this file, not from `agent_spawner.py`, specifically to avoid a circular import. Worth remembering if either file is ever refactored — the split isn't arbitrary.
+
+## Classes
+
+### `AutoPackagingSystem`
+
+- `__init__(output_dir=None)` — resolves the output directory (`Config.NPC_APPLICATIONS_DIR` default), constructs the real `AgentPackager` (`self.packager = AgentPackager(...)`), a plain `Queue`, a `packaged_agents` dict, and **starts a daemon worker thread immediately**, inside the constructor — a real side effect on object creation, not something a caller opts into separately.
+- `queue_agent_for_packaging(agent, brain_capsule_path, metadata=None)` — non-blocking; just enqueues a dict and returns.
+- `package_agent_sync(agent, brain_capsule_path, metadata=None)` — blocking; waits for brain stability inline, then packages, all on the calling thread.
+- `_wait_for_stable_brain(brain_file, max_wait, check_interval, stable_needed)` _(defaults read from `Config` at function-definition time)_ — first polls for the file to exist at all, then polls for `stable_needed` consecutive reads at the same file size before considering it done — genuinely more careful than an existence check alone, since it protects against packaging a brain file mid-write from another process.
+- `_run_packager(agent, brain_path, metadata)` — allocates a port, calls **`self.packager.package_agent(...)`** (this is the real `AgentPackager` call — `self` here is `AutoPackagingSystem`, not `EnhancedAgentSpawner`), stores `backend_port`/`frontend_port` (`port + 1`) into the result, persists the registry.
+- `_packaging_worker()` — the daemon thread's loop: 1s-timeout queue pull, waits for brain stability up to 3000s (matching `main.py`'s own `_auto_package_agent()` polling ceiling exactly — the two files independently agree on this number), then packages.
+- `_allocate_port(agent_id, base_port=Config.BASE_BACKEND_PORT)` — **the module docstring claims this produces a port "consistent across restarts for the same agent," via `hash(agent_id) % 9000`. That claim doesn't hold against Python's actual default behavior**: `hash()` on strings has been randomized per-process since Python 3.3 (a security measure against hash-flooding), unless `PYTHONHASHSEED` is pinned to a fixed value in the environment — nothing read this pass sets it. Not confirmed either way against launch scripts, service files, or a Dockerfile, none of which were part of this ingest — but the mechanism as written in this file, on its own, would not actually produce the same port across two separate process runs. Worth being precise about scope: this is the port baked into a _packaged exe's_ `config.json` at packaging time (via [[wiki/codebase/files/packager|packager.py]]'s `_create_config()`), not the live multi-agent system's own port stability — that already-confirmed-working mechanism (`main.py`'s `start_agent_process()`, ports persisted through `agents.json`) is a separate, different code path unaffected by this.
+- `_save_package_registry()` / `get_package_info()` / `list_packaged_agents()` — plain JSON-backed dict read/write.
+- `cleanup_build_artifacts()` — delegates to `self.packager.cleanup_build_artifacts()` (the real `AgentPackager`).
+- `shutdown()` — signals the stop event, joins the worker thread (5s timeout).
+
+### `EnhancedAgentSpawner(AgentSpawner)`
+
+- `__init__(client_jar_path=None, auto_package=True, package_output_dir=None, use_ultimmc=None)` — resolves `client_jar_path` from `Config.CLIENT_JAR` if not given, calls the base `AgentSpawner.__init__()`, conditionally constructs `self.packager = AutoPackagingSystem(...)` (an `AutoPackagingSystem`, **not** an `AgentPackager` — see the correction above), resolves `use_ultimmc` from `Config.USE_ULTIMMC` if not given and conditionally constructs `self._ultimmc_spawner = UltimMCAgentSpawner(...)`, and sets `self._breeding_system = None` with a comment noting it's attached externally, after construction, by the breeding system itself.
+- `_post_spawn(agent, server_addr, extra_meta)` — the shared tail end of both spawn methods: warns (doesn't block) if the brain file isn't found yet, attaches the breeding system if one's been registered (`self._breeding_system.attach_to_agent(agent)`), and queues packaging if `auto_package` is on and the brain file exists.
+- `spawn_npc(agent_id, server_addr, persona_traits=None, memory_mb=..., gender=None)` / `spawn_god(god_type, server_addr, custom_traits=None)` — both try the UltimMC delegate first when configured and available, catching any exception and falling back to `super().spawn_npc()`/`super().spawn_god()` (the plain `AgentSpawner` behavior) on failure, logging a warning either way. Both always end by routing through `_post_spawn()`. This stacks on top of [[agent_spawner]]'s own already-documented internal fallback inside `UltimMCAgentSpawner` itself — so a UltimMC-configured spawn now has two independent fallback layers, not one: the delegate's own internal per-step fallback, and this class's outer try/except around the whole delegate call.
+- `package_agent(agent_id, brain_path, agent_type, custom_name, gender="neutral")` — the manual-trigger entry point `main.py`'s `/api/agents/{agent_id}/package` route calls directly (`agent_manager.spawner.package_agent(...)` — see the `main.md` correction above). If no gender was passed (or it's still the default `"neutral"`), tries to read a real one off the brain capsule directly via a fresh [[brain_capsule]] load before falling back to whatever was passed in — so a caller that doesn't know an agent's gender doesn't accidentally stamp `"neutral"` over a real one already saved in the capsule. Then reaches two attributes deep — `self.packager.packager.package_agent(...)` — to call the actual `AgentPackager`.
+- `cleanup_all()` — calls the base class's `cleanup_all()`, then `self.packager.shutdown()` if a packager exists.
+
+## Problems (faced by traditional AI systems / LLMs)
+
+Packaging a live, still-running agent into a distributable artifact runs into an ordering problem general to any system that periodically checkpoints mutable state: read the checkpoint file too early — mid-write, or before it exists at all — and you either crash or silently bundle a corrupt/incomplete one. A second, more architectural problem: extending a base spawner's behavior (UltimMC automation, packaging, breeding attachment) without those extensions needing to know about each other, so any one of them can fail or be absent without taking the others down.
+
+## Solutions
+
+The stability-polling wait (existence, then N consecutive stable-size reads, not just existence) is a real, if simple, answer to the first problem — a genuinely more careful check than "does the file exist yet," confirmed by direct read rather than assumed from the method's name. The second problem gets a clean composition-over-inheritance answer: `EnhancedAgentSpawner` doesn't need `UltimMCAgentSpawner` or `BreedingSystem` to know about it or each other — it holds references to both and calls into them defensively (try/except around the UltimMC delegate, a plain `is not None` check before touching the breeding system), so a missing or failing optional piece degrades gracefully rather than taking the whole spawn down. The port-stability problem, in the one place this file has one (`_allocate_port`), does not get a real solution — see the note above.
+
+## Files Required
+
+- [[wiki/codebase/files/packager|packager]] — `AgentPackager`, constructed inside `AutoPackagingSystem`, not `EnhancedAgentSpawner` directly.
+- [[agent_spawner]] — `AgentSpawner` (real base class) and, lazily, `UltimMCAgentSpawner`.
+- [[config-two-copies]] — `py_backend/config.py` (`Config`).
+- `ai_core/agent.py` — `NPCAgent`, type-hint only; never constructed here.
+
+## Files Used In
+
+- `main.py` — `AgentProcessManager.__init__()` constructs `EnhancedAgentSpawner` directly (`self.spawner = EnhancedAgentSpawner(...)`), and one route reaches two layers into it (`agent_manager.spawner.package_agent()` → `self.packager.packager.package_agent()`).
+- [[breeding_system]] — `BreedingSystem.__init__(spawner)` takes an `EnhancedAgentSpawner` instance directly, confirmed matching what that page already said before this file was read.

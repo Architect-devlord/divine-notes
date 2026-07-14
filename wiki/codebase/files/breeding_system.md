@@ -20,7 +20,7 @@ status: ingested
 
 **Methods:**
 
-- `__init__(spawner)` — three dicts: `pregnancies` (keyed by the carrying parent's id), `growth_stages` (child id → birth time), `breeding_cooldowns` (agent id → cooldown-end timestamp). Takes an `EnhancedAgentSpawner` (from `auto_packager.py`, not yet given its own page) so it can spawn children and look up existing agents by id.
+- `__init__(spawner)` — three dicts: `pregnancies` (keyed by the carrying parent's id), `growth_stages` (child id → birth time), `breeding_cooldowns` (agent id → cooldown-end timestamp). Takes an [[auto_packager]] `EnhancedAgentSpawner` so it can spawn children and look up existing agents by id.
 - `attach_to_agent(agent)` — **fixes bug B-06**: must be called for every agent regardless of type, not just NPCs, since the class's own comment is explicit that gods can carry pregnancies too (when acting in the female role — see below) and that state has to survive a save/load cycle the same way an NPC's would. Also where a restored pregnancy gets re-registered: if the due time already passed while the agent was offline, birth is queued to fire on the very next `tick()` rather than being lost.
 - `check_can_breed(agent_a_id, agent_b_id, beds_adjacent=True)` — five preconditions, all must pass: bed-adjacency (waived entirely if either party is a god — "gods are divine beings and don't need beds," per the comment), gender compatibility (via [[wiki/codebase/files/personality|personality.py]]'s `can_breed()`), neither already pregnant, neither still a child, neither on cooldown.
 - `initiate_breeding(agent_a_id, agent_b_id)` — **the exact role-flip logic** [[breeding-system]] describes only in prose, now the precise rule set: female+non-female → female carries; dual(god)+male → god carries (acts female); dual+female → the NPC carries (god acts male); dual+dual (god×god) → coin flip, so neither god is permanently locked into the pregnant role across repeated pairings. Child traits come from `_generate_child_traits()` below; child gender from `determine_child_gender()`, defensively re-rolled to plain male/female if it somehow returned anything else (the comment calls this guard purely defensive, since the current implementation of `determine_child_gender()` already only ever returns those two). Fires a `'breeding'` reward event through _both_ parents via `_fire_breeding_reward()` — not hardcoded reward, computed by each parent's own `RewardSystem.compute_reward()` so it's personality-dependent per parent.
@@ -48,7 +48,7 @@ The role-flip rule set handles every parent-type combination explicitly rather t
 
 ## Files Used In
 
-- `auto_packager.py` — `EnhancedAgentSpawner` is passed into `BreedingSystem.__init__()`; not yet given its own page.
+- [[auto_packager]] — `EnhancedAgentSpawner` is passed into `BreedingSystem.__init__()`; confirmed directly, matching what this page already said, now that [[auto_packager]] has been read.
 - `agent.py` — presumably attaches `BreedingSystem` to each agent (matching `attach_to_agent()`'s call pattern) and calls `tick()` periodically; not directly confirmed at that call site this pass.
 - [[reward_system]] — `compute_reward()`/`apply_signal()` are called directly for every breeding event, both parents.
 - The Java-side `BreedCommand`/`BreedingWalkManager` (see [[breeding-system]]) ultimately trigger this class's `initiate_breeding()` via `BreedingEventHandler`/`PythonBackendClient` — the full cross-language path is already documented there.
