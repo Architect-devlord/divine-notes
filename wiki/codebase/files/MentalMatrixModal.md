@@ -18,11 +18,11 @@ status: ingested
 
 ## State
 
-- `simulationState` — set via the `onSimulationEvent` callback passed to `MentalMatrixSimulator`. **Always stays `null` in practice**: `MentalMatrixSimulator` accepts that callback but never calls it, confirmed on that component's own page.
+- `simulationState` — set via the `onSimulationEvent` callback passed to `MentalMatrixSimulator`. **Fixed as of the 2026-07-16 pull**: previously always stayed `null`, since `MentalMatrixSimulator` accepted that callback but never called it — now genuinely populated, since that component calls it from a reporting effect keyed on its own object list. See [[wiki/codebase/files/MentalMatrixSimulator|MentalMatrixSimulator.jsx]] for the fix itself.
 
 ## Component
 
-A fade-only entrance animation with a specific, documented reason in its own in-line comment worth preserving: no `scale` transform on entry, because `scale(0.9)` collapses the container to near-0px before Three.js can measure its size on mount, producing a black viewport — fade-only sidesteps the issue entirely rather than working around it. Two footer buttons: "Load State" has no `onClick` handler at all — not a stub, not wired to anything, just decorative — and "Dump Buffer" (`handleExport`) downloads `simulationState` as a JSON file, but since that state is always `null` (see above), its own early-return guard means this button is permanently a no-op in the current build.
+A fade-only entrance animation with a specific, documented reason in its own in-line comment worth preserving: no `scale` transform on entry, because `scale(0.9)` collapses the container to near-0px before Three.js can measure its size on mount, producing a black viewport — fade-only sidesteps the issue entirely rather than working around it. Two footer buttons: "Load State" has no `onClick` handler at all — not a stub, not wired to anything, just decorative, unaffected by the 2026-07-16 fix — and "Dump Buffer" (`handleExport`) downloads `simulationState` as a JSON file. **This button is fixed as of that same pull**: previously permanently a no-op (its own early-return guard on a `simulationState` that never left `null`); now genuinely exports real object data, since `simulationState` gets populated for the first time.
 
 ## Problems (faced by traditional AI systems / LLMs)
 

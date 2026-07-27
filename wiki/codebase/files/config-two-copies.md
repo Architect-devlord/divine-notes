@@ -16,12 +16,9 @@ So this isn't simply "someone forgot to delete the old one" — `main.py` (the m
 
 ## The one real, confirmed inconsistency
 
-Both copies share the identical comment block above `AGENT_EXCLUDE_MODULES`, which explicitly names two things that should be excluded for the same reason: `py_backend.agent_spawner` and `ai_core.agent_spawner` ("spawning belongs to the server... same reason"). **Neither file's actual list matches that comment**:
+**Fixed as of the 2026-07-16 pull, confirmed by diff.** Both copies previously shared the identical comment block above `AGENT_EXCLUDE_MODULES`, naming two things that should be excluded for the same reason: `py_backend.agent_spawner` and `ai_core.agent_spawner` ("spawning belongs to the server... same reason"). Neither file's actual list matched that comment — `py_backend/config.py`'s list had `'py_backend.agent_spawner'` (a module path that never existed; `agent_spawner.py` has always lived under `ai_core/`) and `'py_backend.ai_core.agent_spawner'`, while `ai_core/config.py`'s list had only the bare `'ai_core.agent_spawner'`, with no equivalent of either of the other file's entries.
 
-- `py_backend/ai_core/config.py`'s list has only `'ai_core.agent_spawner'` — `'py_backend.agent_spawner'` is missing entirely, despite being named in the shared comment.
-- `py_backend/config.py`'s list has `'py_backend.agent_spawner'` _and_ `'py_backend.ai_core.agent_spawner'` — neither of which is the bare `'ai_core.agent_spawner'` the comment actually names.
-
-Since `packager.py` — the thing that actually invokes PyInstaller with these lists — imports the `py_backend/config.py` copy, that file's version is the operative one for real builds. Given every `ai_core/*.py` module resolves its own sibling imports as bare `ai_core.X` (confirmed throughout this entire ingest pass), a packaged agent executable would resolve a transitive `agent_spawner` import the same way — and `py_backend/config.py`'s exclude list doesn't have an entry that would match that bare form. **Not confirmed as an active bug** — this depends on whether anything bundled into an agent executable actually imports `agent_spawner` transitively, which wasn't traced this pass, and `agent_spawner.py` itself imports `from py_backend.config import Config` (the _other_ convention), suggesting it may not be reachable from inside a packaged agent context at all. Recorded as a real, verifiable inconsistency regardless of whether it's currently load-bearing.
+The fix: `py_backend/config.py`'s nonexistent `'py_backend.agent_spawner'` entry is now `'ai_core.agent_spawner'` — the real, correct bare form — and `ai_core/config.py`'s list picked up the missing `'py_backend.ai_core.agent_spawner'` entry to match. Both copies now agree with each other and with their own shared comment.
 
 ## Everything else is identical
 

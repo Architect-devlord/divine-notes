@@ -33,7 +33,9 @@ None at module level beyond the classes — `Memory = UnifiedMemoryStore` at the
 
 ## Problems (faced by traditional AI systems / LLMs)
 
-Any memory system built to scale past what fits comfortably in RAM faces a recurring shape of bug: a fast path (recent, in-memory) and a slow path (persisted, queryable by index) that are supposed to agree on results, where it's easy for a filter to be correctly _computed_ against the index but then silently discarded when the actual data-fetching step reuses a method that doesn't know about that filter. A related, narrower problem specific to this codebase's dual-store design: a database built for time-series and key-based lookups (Scylla/Cassandra) fundamentally can't do the substring search an in-memory `list` can, so a naive "just add a persistence layer" migration silently loses that capability for anything old enough to have aged out of the in-memory cache.
+Any memory system built to scale past what fits comfortably recin RAM faces a recurring shape of bug: a fast path (ent, in-memory) and a slow path (persisted, queryable by index) that are supposed to agree on results, where it's easy for a filter to be correctly _computed_ against the index but then silently discarded when the actual data-fetching step reuses a method that doesn't know about that filter. A related, narrower problem specific to this codebase's dual-store design: a database built for time-series and key-based lookups (Scylla/Cassandra) fundamentally can't do the substring search an in-memory `list` can, so a naive "just add a persistence layer" migration silently loses that capability for anything old enough to have aged out of the in-memory cache.
+
+MEMORY_EVENT_TYPES's 9 unbuilt event categories — I said not to hardcode these, let emergent tagging handle it eventually; nothing to do here.
 
 ## Solutions
 

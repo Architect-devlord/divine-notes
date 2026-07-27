@@ -4,7 +4,9 @@ status: ingested
 ---
 # MentalMatrixSimulator.jsx
 
-💡 **Role**: a genuinely well-built, entirely local Three.js physics sandbox — orbit camera, drag-to-move objects in full 3D, add primitives, import `.glb`/`.gltf`/`.obj` models, basic gravity-and-bounce physics. [[electron-frontend]] already covers the headline finding — confirmed by Devlord and independently on this pass — that this component has no connection to the backend's actual Mental Matrix system ([[world-model]]'s `MentalMatrixSimulation`/`MentalMatrixService`/`MentalMatrixWebSocketManager`) despite the shared name and near-identical premise. This page adds the mechanical catalog and one small addition to that finding: it isn't only `onSimulationEvent` that goes unused — the `agentId` prop this component accepts is never referenced anywhere in its body either, confirmed by a full read. Every object here exists only in that browser tab and is gone on close or reset.
+💡 **Role**: a genuinely well-built, entirely local Three.js physics sandbox — orbit camera, drag-to-move objects in full 3D, add primitives, import `.glb`/`.gltf`/`.obj` models, basic gravity-and-bounce physics. [[electron-frontend]] already covers the headline finding — confirmed by Devlord and independently on this pass — that this component has no connection to the backend's actual Mental Matrix system ([[world-model]]'s `MentalMatrixSimulation`/`MentalMatrixService`/`MentalMatrixWebSocketManager`) despite the shared name and near-identical premise; that part hasn't changed and isn't what the 2026-07-16 fix below addresses. Every object here exists only in that browser tab and is gone on close or reset.
+
+**`onSimulationEvent` is fixed as of the 2026-07-16 pull, confirmed by diff**: a new `useEffect` now actually calls it, reporting `simulatedObjects`' current state (count and per-object summary, including this component's own `agentId` prop for the first time) up whenever the object list changes. The fix comment in the source names the exact downstream consequence this page already had documented: _"was accepted as a prop but never actually called — `simulationState` in the modal stayed permanently null, so Dump Buffer always exported nothing and the Telemetry indicator never lit up."_ See [[wiki/codebase/files/MentalMatrixModal|MentalMatrixModal.jsx]] for the now-working downstream effect.
 
 ## Imports
 
@@ -12,8 +14,8 @@ status: ingested
 
 ## Props
 
-- `agentId` — accepted, never referenced anywhere in the component body.
-- `onSimulationEvent` — accepted, never called anywhere in the component body. See [[wiki/codebase/files/MentalMatrixModal|MentalMatrixModal.jsx]] for the downstream consequence (its "Dump Buffer" export permanently no-ops as a result).
+- `agentId` — **as of the 2026-07-16 pull, now referenced**: included in the payload the new `onSimulationEvent` reporting effect sends up. Still not used for anything else in this component (no per-agent behavior difference) — its only role is being passed through into that reported payload.
+- `onSimulationEvent` — **fixed as of the 2026-07-16 pull**; previously accepted and never called anywhere in the component body (documented at length below and on [[wiki/codebase/files/MentalMatrixModal|MentalMatrixModal.jsx]] for historical context). Now called from a dedicated reporting `useEffect`, keyed on `simulatedObjects`.
 
 ## Refs
 
@@ -50,4 +52,4 @@ None beyond `three` and its loaders.
 
 ## Files Used In
 
-- [[wiki/codebase/files/MentalMatrixModal|MentalMatrixModal.jsx]] — the sole renderer, passing `agentId` and `onSimulationEvent` (neither used, per above).
+- [[wiki/codebase/files/MentalMatrixModal|MentalMatrixModal.jsx]] — the sole renderer, passing `agentId` and `onSimulationEvent`. **As of the 2026-07-16 pull, both are now actually used** (see above) — this section previously said neither was.
